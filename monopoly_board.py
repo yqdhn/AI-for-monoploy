@@ -15,10 +15,10 @@ class cell:
         if self.type == "Tax":
             if self.name == "Income Tax":
                 tax = player.moneyOut(100)
-                print(f'{player.name} pays {tax} Income Tax')
+                print(f'{player.name} pays {tax} {self.name}')
             elif self.name == "Super Tax":
                 tax = player.moneyOut(200)
-                print(f'{player.name} pays {tax} Super Tax')
+                print(f'{player.name} pays {tax} {self.name}')
         elif self.type == "cc": ## to Do ######################
             print(f'draw a {self.name}')
         elif self.type == "chance": # to Do ###################
@@ -39,9 +39,10 @@ class Property:
         self.house_price = house_price
         self.group = group
         self.isFullSet = False
+        self.isMortgaged = False
         self.houses = 0
         self.owner = ""
-
+        self.valueToOwner = 0
 
     def action(self, player, rent=None, board=None):
         # owned
@@ -222,7 +223,7 @@ class Board:
         
         for prop in player.toBuild:
             if prop.house_price <= maxMoneyToBuild and prop.houses < average:
-                print(prop.name)
+                print(f'Build {prop.name}')
                 return prop
         return False
 
@@ -258,7 +259,7 @@ class Board:
     def rentReturn(self, property):
         theReturn = []
         for i, rent in enumerate(property.rent_price):
-            theReturn.append(round(rent / (property.house_price*i + property.price), 3))
+            theReturn.append(rent / (property.house_price*i + property.price))
 
         return theReturn
     
@@ -271,25 +272,34 @@ class Board:
 
 
     def propertyValue(self, player, property):
-        share = round(self.propertyShareInGroup(property.group, player), 3) * 10 # just scaling (to be out of 10)
+        share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
         rent = self.rentReturn(property)
-        financial = round(self.financialStatus(player, property),3)
+        financial = self.financialStatus(player, property)
+        numberOfHouses = 0 # missing the value of having houses
 
+    	# check rent return according to the financial status
         idx = int(financial)
         rentFinancial = 0
         if financial < 5:
             rentFinancial = (rent[idx] * (idx + 1 - financial)) + (rent[idx + 1] * (financial - idx))
         else:
             rentFinancial = rent[idx]
-        
-        rentFinancial = round(rentFinancial * 10/1.622, 3) # just scaling (to be out of 10)
-        return share + rentFinancial
+        rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
+
+        value = round(share + rentFinancial + numberOfHouses, 3)
+        return value
 
     def wantedProperties(self, player):
         for prop in self.monopoly_board:
-            if prop.type == "property" and prop.owner != player:
+            if prop.type == "property" and prop.owner != player and prop.owner != "" and prop.houses == 0:
                 player.wanted[prop] = self.propertyValue(player, prop)
 
+
+    # The value of all properties the player own (add in the board) 
+    def valuePlayersProperties(self, player):
+        for prop in self.monopoly_board:
+            if prop.type == "property" and prop.owner == player:
+                prop.valueToOwner = self.propertyValue(player, prop)
 
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
@@ -297,6 +307,7 @@ class Board:
         for player in self.players:
             self.toBuild(player)
             self.wantedProperties(player)
+            self.valuePlayersProperties(player)
 
     def action(self, player, position):
         # Landed on a property - calculate rent first
@@ -323,10 +334,10 @@ def gameOver(players):
 
 
 def play(players, max_rounds):
-    a = Player("Alex", settingStartingMoney, "cheapest", 500)
-    b = Player("Bop", settingStartingMoney, "cheapest", 500)
-    c = Player("Alice", settingStartingMoney, "cheapest", 500)
-    d = Player("Said", settingStartingMoney, "cheapest", 500)
+    a = Player("Alex", "cheapest", 500)
+    b = Player("Bop", "cheapest", 500)
+    c = Player("Alice", "cheapest", 500)
+    d = Player("Said", "cheapest", 500)
 
     players = [a, b, c, d]
     
@@ -369,10 +380,10 @@ def game(players, max_rounds, game_num):
         
 
 
-a = Player("Alex", settingStartingMoney, "cheapest", 500)
-b = Player("Bop", settingStartingMoney, "cheapest", 500)
-c = Player("Alice", settingStartingMoney, "cheapest", 500)
-d = Player("Said", settingStartingMoney, "cheapest", 500)
+a = Player("Alex", "cheapest", 500)
+b = Player("Bop", "cheapest", 500)
+c = Player("Alice", "cheapest", 500)
+d = Player("Said", "cheapest", 500)
 
 players = [a, b, c, d]
 # wins = game(players, 200, 10)
@@ -381,53 +392,53 @@ players = [a, b, c, d]
 gameBoard = Board(players)
 
 
-stop = True
-rounds = 0
-while stop:
-    for player in players:
-        player.makeAMove(gameBoard)
-        print("")
-    if gameOver(players):
-        stop = False
-        for player in players:
-            if player.alive:
-                print(f'Number of rounds is {rounds}')
-                print(player.name + " is the winner.\n")
-    if rounds > 500:
-        print("number of rounds exceeded\n")
-        stop = False
-    rounds += 1
+# stop = True
+# rounds = 0
+# while stop:
+#     for player in players:
+#         player.makeAMove(gameBoard)
+#         print("")
+#     if gameOver(players):
+#         stop = False
+#         for player in players:
+#             if player.alive:
+#                 print(f'Number of rounds is {rounds}')
+#                 print(player.name + " is the winner.\n")
+#     if rounds > 500:
+#         print("number of rounds exceeded\n")
+#         stop = False
+#     rounds += 1
 
-for player in players:
-    print(f'{player.name:6} have {player.money}')
+# for player in players:
+#     print(f'{player.name:6} have {player.money}')
 
+# for x in gameBoard.monopoly_board:
+#         if x.type == "property":
+#             if x.owner != "":
+#                 print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner. Value {x.valueToOwner}')
+#             else:
+#                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
+
+
+y = 1
 for x in gameBoard.monopoly_board:
-        if x.type == "property":
-            if x.owner != "":
-                print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner')
-            else:
-                print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner')
+    if x.type == "property":
+        if y==1:
+            x.owner = a
+            y=0
+        else:
+            x.owner = b
+            y=1
+gameBoard.recalculateChanges()
+a.money = 5000
+for x in gameBoard.monopoly_board:
+        if x.type == "property" and x.owner == a:
+            print(f'{x.name:17} {x.valueToOwner}')
+print("\n")
+b.wanted = {k: v for k, v in sorted(b.wanted.items(), key=lambda item: -item[1])}
 
-
-
-
-# gameBoard.recalculateChanges()
-
-# for x in gameBoard.monopoly_board:
-#     if x.type == "property":
-#         if x.group in ["brown", "green", "red"]:
-#             x.owner = a
-
-# a.money = 500
-# for x in gameBoard.monopoly_board:
-#         if x.type == "property" and x.owner == a:
-#             print(f'{x.name:17} {gameBoard.propertyValue(a,x)}')
-# print("\n")
-# b.wanted = {k: v for k, v in sorted(b.wanted.items(), key=lambda item: -item[1])}
-
-# for prop in b.wanted:
-#     prop.owner = a
-#     print(f'{prop.name:17}: {b.wanted[prop]}')
+for prop in a.wanted:
+    print(f'{prop.name:17}: {a.wanted[prop]}')
 
 
 

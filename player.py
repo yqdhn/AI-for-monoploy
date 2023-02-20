@@ -1,13 +1,13 @@
 import random
 
 class Player:
-    def __init__(self, name, startingMoney, buildTechnique, cashLimit):
+    def __init__(self, name, buildTechnique, cashLimit):
         self.name = name
         self.position = 0
-        self.money = startingMoney  # start 1500
+        self.money = 1500  # start 1500
         self.buildTechnique = buildTechnique
         self.cashLimit = cashLimit
-        self.tobuild = []
+        self.toBuild = []
         self.wanted = {}
         self.inJail = False
         self.roundsInJail = 0
@@ -101,6 +101,11 @@ class Player:
             print(f'{self.name} plays again {dice1}={dice2}')
             self.makeAMove(board)
     
-    # def bankruptPlayer(self, board):
+    # take an action if player doesn't have money
+    def bankruptPlayer(self, board, amount):
+        while self.money - amount < 0:
+            tomorgent
+
+
 
     # def tradeProperty(self, board):
