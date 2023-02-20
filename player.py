@@ -22,16 +22,16 @@ class Player:
         print(self.name + " money become " + str(self.money))
 
     # pay someone or buy
-    def moneyOut(self, amount):
+    def moneyOut(self, amount, board):
         print(self.name + " money was " + str(self.money))
         money_taken = 0
-        if amount <= self.money:
+        self.bankruptPlayer(amount, board)
+        if self.money >= amount:
             self.money -= amount
             money_taken = amount
         else:
             money_taken = self.money
-            self.money -= self.money
-            self.alive = False ## does not have enough money
+            self.money -= money_taken
         
         print("become " + str(self.money) + " paid " + str(money_taken))
         return money_taken
@@ -48,6 +48,10 @@ class Player:
             return False
 
         board.recalculateChanges()
+
+        while self.unMortgage(board):
+            board.recalculateAfterPropertyChange()
+
         while board.build(self, self.money - self.cashLimit):
             pass
 
@@ -75,7 +79,7 @@ class Player:
                     print(f'{self.name} get out of jail after 3 rounds')
                     pass
                 elif self.money >= 50:
-                    jailFine = self.moneyOut(50)
+                    jailFine = self.moneyOut(50, board)
                     print(f'{self.name} pays {jailFine} to get out of jail')
                     self.roundsInJail = 0
                 else:
@@ -102,9 +106,59 @@ class Player:
             self.makeAMove(board)
     
     # take an action if player doesn't have money
-    def bankruptPlayer(self, board, amount):
+    def bankruptPlayer(self, amount, board):
         while self.money - amount < 0:
-            tomorgent
+            propertyToMortgage = None
+            for prop in board.monopoly_board:
+                if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
+                    if propertyToMortgage == None:
+                        propertyToMortgage = prop
+                    elif propertyToMortgage.valueToOwner > prop.valueToOwner:
+                        propertyToMortgage = prop
+            
+            if propertyToMortgage == None: #there is no property To Mortgage
+                self.alive = False
+                board.sellAll(self)
+                print(f'{self.name} is out no (money to pay rent)')
+                return
+            if propertyToMortgage.houses > 0:
+                self.moneyIn(int(propertyToMortgage.house_price/2))
+                propertyToMortgage.houses -= 1
+                print(f'{self.name} sold one house from {propertyToMortgage.name}')
+            else:
+                houseSold = False
+                if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
+                    houseSold = False
+                    for prop in board.monopoly_board:
+                        if prop.type == "property" and prop.group == propertyToMortgage.group:
+                            if prop.houses > 0 and prop != propertyToMortgage:
+                                self.moneyIn(int(propertyToMortgage.house_price/2))
+                                prop.houses -= 1
+                                print(f'{self.name} sold one house from {propertyToMortgage.name} group')
+                                houseSold = True
+                                break
+                if not houseSold: 
+                    propertyToMortgage.isMortgaged = True
+                    self.moneyIn(int(propertyToMortgage.price/2))
+                    print(f'{self.name} mortgage {propertyToMortgage.name}')
+            
+            board.recalculateChanges()
+
+    def unMortgage(self, board):
+        propertyToUnMortgage = None
+        for prop in board.monopoly_board:
+            if prop.type in ["property", "util", "station"] and prop.owner == self and prop.isMortgaged and prop.price/2 <= self.money:
+                if propertyToUnMortgage == None:
+                    propertyToUnMortgage = prop
+                elif propertyToUnMortgage.valueToOwner < prop.valueToOwner:
+                    propertyToUnMortgage = prop
+
+        if propertyToUnMortgage != None:
+            propertyToUnMortgage.isMortgaged = False
+            self.moneyOut(int(propertyToUnMortgage.price/2), board)
+            print(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
+
+
 
 
 

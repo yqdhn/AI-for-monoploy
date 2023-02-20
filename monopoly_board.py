@@ -10,14 +10,14 @@ class cell:
         self.name = name
         self.type = type
 
-    def action(self, player):
+    def action(self, player, board):
 
         if self.type == "Tax":
             if self.name == "Income Tax":
-                tax = player.moneyOut(100)
+                tax = player.moneyOut(100, board)
                 print(f'{player.name} pays {tax} {self.name}')
             elif self.name == "Super Tax":
-                tax = player.moneyOut(200)
+                tax = player.moneyOut(200, board)
                 print(f'{player.name} pays {tax} {self.name}')
         elif self.type == "cc": ## to Do ######################
             print(f'draw a {self.name}')
@@ -44,7 +44,7 @@ class Property:
         self.owner = ""
         self.valueToOwner = 0
 
-    def action(self, player, rent=None, board=None):
+    def action(self, player, board, rent=None):
         # owned
         if self.owner == player:
             print(player.name + " is the owner of " + self.name)
@@ -53,7 +53,7 @@ class Property:
         # for sale
         elif self.owner == "":
             if player.money >= self.price:
-                player.moneyOut(self.price)
+                player.moneyOut(self.price, board)
                 self.owner = player
                 print(player.name + " buy " + self.name)
             else:
@@ -61,11 +61,12 @@ class Property:
 
         # pay rent
         else:
-            money_taken = player.moneyOut(rent)
-            if not player.alive:
-                board.sellAll(player)
+            if self.isMortgaged:
+                print(f'{self.name} is mortgaged, no rent for {self.owner.name}')
+            else:
+                money_taken = player.moneyOut(rent, board)
                 self.owner.moneyIn(money_taken)
-            print(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
+                print(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
 
 
 class Board:
@@ -235,7 +236,7 @@ class Board:
             return False
         else:
             buildme.houses += 1
-            player.moneyOut(buildme.house_price)
+            player.moneyOut(buildme.house_price, self)
     
     ## return all properties to the game (if player lost)
     def sellAll(self, player):
@@ -275,7 +276,7 @@ class Board:
         share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
         rent = self.rentReturn(property)
         financial = self.financialStatus(player, property)
-        numberOfHouses = 0 # missing the value of having houses
+        valueOfHouses = rent[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10) 
 
     	# check rent return according to the financial status
         idx = int(financial)
@@ -286,7 +287,7 @@ class Board:
             rentFinancial = rent[idx]
         rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
 
-        value = round(share + rentFinancial + numberOfHouses, 3)
+        value = round(share + max(rentFinancial, valueOfHouses), 3)
         return value
 
     def wantedProperties(self, player):
@@ -295,11 +296,13 @@ class Board:
                 player.wanted[prop] = self.propertyValue(player, prop)
 
 
-    # The value of all properties the player own (add in the board) 
+    # The value of all properties the player own (add in the board)
     def valuePlayersProperties(self, player):
         for prop in self.monopoly_board:
             if prop.type == "property" and prop.owner == player:
                 prop.valueToOwner = self.propertyValue(player, prop)
+            elif prop.type in ["util", "station"]:
+                prop.valueToOwner == 1
 
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
@@ -315,10 +318,10 @@ class Board:
             # calculate the rent one would have to pay (but not pay it yet)
             rent = self.calculateRent(position)
             # pass action to to the cell
-            self.monopoly_board[position].action(player, rent, self)
+            self.monopoly_board[position].action(player, self, rent)
         # other cells
         else:
-            self.monopoly_board[position].action(player)
+            self.monopoly_board[position].action(player, self)
 
 ## check if there is a winner (one player alive)
 def gameOver(players):
@@ -385,60 +388,61 @@ b = Player("Bop", "cheapest", 500)
 c = Player("Alice", "cheapest", 500)
 d = Player("Said", "cheapest", 500)
 
-players = [a, b, c, d]
+players = [a, b]
 # wins = game(players, 200, 10)
 # print(wins)
 
 gameBoard = Board(players)
 
 
-# stop = True
-# rounds = 0
-# while stop:
-#     for player in players:
-#         player.makeAMove(gameBoard)
-#         print("")
-#     if gameOver(players):
-#         stop = False
-#         for player in players:
-#             if player.alive:
-#                 print(f'Number of rounds is {rounds}')
-#                 print(player.name + " is the winner.\n")
-#     if rounds > 500:
-#         print("number of rounds exceeded\n")
-#         stop = False
-#     rounds += 1
+stop = True
+rounds = 0
+while stop:
+    for player in players:
+        player.makeAMove(gameBoard)
+        print("")
+    if gameOver(players):
+        stop = False
+        for player in players:
+            if player.alive:
+                print(f'Number of rounds is {rounds}')
+                print(player.name + " is the winner.\n")
+    if rounds > 1000:
+        print("number of rounds exceeded\n")
+        stop = False
+    rounds += 1
 
-# for player in players:
-#     print(f'{player.name:6} have {player.money}')
+for player in players:
+    print(f'{player.name:6} have {player.money}')
 
+for x in gameBoard.monopoly_board:
+        if x.type == "property":
+            if x.owner != "":
+                print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner. Value {x.valueToOwner}')
+            else:
+                print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
+
+
+# y = 1
 # for x in gameBoard.monopoly_board:
-#         if x.type == "property":
-#             if x.owner != "":
-#                 print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner. Value {x.valueToOwner}')
-#             else:
-#                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
+#     if x.type == "property":
+#         if y==1:
+#             x.owner = a
+#             y=0
+#         else:
+#             x.owner = b
+#             y=1
 
+# a.money = 700
+# gameBoard.recalculateChanges()
+# for x in gameBoard.monopoly_board:
+#         if x.type == "property" and x.owner == a:
+#             print(f'{x.name:17} {x.valueToOwner}')
+# print("\n")
+# b.wanted = {k: v for k, v in sorted(b.wanted.items(), key=lambda item: -item[1])}
 
-y = 1
-for x in gameBoard.monopoly_board:
-    if x.type == "property":
-        if y==1:
-            x.owner = a
-            y=0
-        else:
-            x.owner = b
-            y=1
-gameBoard.recalculateChanges()
-a.money = 5000
-for x in gameBoard.monopoly_board:
-        if x.type == "property" and x.owner == a:
-            print(f'{x.name:17} {x.valueToOwner}')
-print("\n")
-b.wanted = {k: v for k, v in sorted(b.wanted.items(), key=lambda item: -item[1])}
-
-for prop in a.wanted:
-    print(f'{prop.name:17}: {a.wanted[prop]}')
+# for prop in a.wanted:
+#     print(f'{prop.name:17}: {a.wanted[prop]}')
 
 
 
