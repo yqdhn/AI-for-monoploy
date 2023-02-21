@@ -50,10 +50,12 @@ class Player:
         board.recalculateChanges()
 
         while self.unMortgage(board):
-            board.recalculateAfterPropertyChange()
+            board.recalculateChanges()
 
-        while board.build(self, self.money - self.cashLimit):
-            pass
+        moneyToBuild = self.money - self.cashLimit
+        if moneyToBuild >= 50:
+            while board.build(self, moneyToBuild):
+                pass
 
         dice1 = random.randint(1, 6)
         dice2 = random.randint(1, 6)
@@ -89,6 +91,9 @@ class Player:
         self.roundsInJail = 0
         self.inJail = False
 
+        if not self.alive:
+            return False
+
         # move the piece
         print(f'{self.name} position is {self.position} and dices total is {dice1+dice2}')
         self.position += dice1+dice2
@@ -119,7 +124,7 @@ class Player:
             if propertyToMortgage == None: #there is no property To Mortgage
                 self.alive = False
                 board.sellAll(self)
-                print(f'{self.name} is out no (money to pay rent)')
+                print(f'{self.name} is out (no money to pay rent)')
                 return
             if propertyToMortgage.houses > 0:
                 self.moneyIn(int(propertyToMortgage.house_price/2))

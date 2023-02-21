@@ -57,7 +57,7 @@ class Property:
                 self.owner = player
                 print(player.name + " buy " + self.name)
             else:
-                print(player.name + " can't but" + self.name)
+                print(player.name + " can't buy " + self.name)
 
         # pay rent
         else:
@@ -179,7 +179,7 @@ class Board:
         toBuildLits = []
 
         for prop in self.monopoly_board:
-            if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player:
+            if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
                 toBuildLits.append(prop)
                 # print(prop.name + " added")
 
@@ -201,16 +201,20 @@ class Board:
     # this help to find a property to build (already sorted according the build technique)
     # check if the player can build (how much they can pay)
     def whatToBuild(self, player, maxMoneyToBuild):
+        self.toBuild(player)
         # first check the number of houses in the first set (in tobuild)
         if player.toBuild == []:
             return False
         
+        build = None
         for i, prop in enumerate(player.toBuild):
             if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
+                build = player.toBuild[i]
+                buildGroup = build.group
                 break
-    
-        build = player.toBuild[i]
-        buildGroup = build.group
+        if build == None:
+            return False
+
         numberOfHousesInSet = 0
         numberOfProperties = 0
         for prop in player.toBuild:
@@ -230,13 +234,17 @@ class Board:
 
     # this function do build in properties
     def build(self, player, maxMoneyToBuild):
-        buildme = self.whatToBuild(player, maxMoneyToBuild)
+        if maxMoneyToBuild < 50:
+            return False
 
-        if buildme == False:
+        buildMe = self.whatToBuild(player, maxMoneyToBuild)
+
+        if buildMe == False:
             return False
         else:
-            buildme.houses += 1
-            player.moneyOut(buildme.house_price, self)
+            buildMe.houses += 1
+            player.moneyOut(buildMe.house_price, self)
+            return True
     
     ## return all properties to the game (if player lost)
     def sellAll(self, player):
@@ -244,6 +252,9 @@ class Board:
             if type(prop) == Property and prop.owner == player:
                 prop.owner = ""
                 prop.houses = 0
+                prop.isMortgaged = False
+                prop.isFullSet = False
+                self.valueToOwner = 0
 
     ## check how valuable the property of some player
     def propertyShareInGroup(self, group, player):
@@ -308,7 +319,6 @@ class Board:
     def recalculateChanges(self):
         self.isSets()
         for player in self.players:
-            self.toBuild(player)
             self.wantedProperties(player)
             self.valuePlayersProperties(player)
 
@@ -388,32 +398,33 @@ b = Player("Bop", "cheapest", 500)
 c = Player("Alice", "cheapest", 500)
 d = Player("Said", "cheapest", 500)
 
-players = [a, b]
+players = [a, b, c, d]
 # wins = game(players, 200, 10)
 # print(wins)
 
 gameBoard = Board(players)
 
-
-stop = True
+playing = True
 rounds = 0
-while stop:
+while playing:
     for player in players:
         player.makeAMove(gameBoard)
         print("")
     if gameOver(players):
-        stop = False
+        playing = False
         for player in players:
             if player.alive:
                 print(f'Number of rounds is {rounds}')
                 print(player.name + " is the winner.\n")
-    if rounds > 1000:
+    if rounds > 500:
         print("number of rounds exceeded\n")
-        stop = False
+        playing = False
     rounds += 1
 
 for player in players:
     print(f'{player.name:6} have {player.money}')
+    for build in player.toBuild:
+        print(build.name)
 
 for x in gameBoard.monopoly_board:
         if x.type == "property":
@@ -451,13 +462,14 @@ for x in gameBoard.monopoly_board:
 # for x in gameBoard.monopoly_board:
 #     if type(x) == Property:
 #         if x.group == "pink" or x.group == "green" or x.group == "red":
-#             x.owner = a.name
+#             x.owner = a
 
 # gameBoard.recalculateChanges()
-# print(gameBoard.calculateRent(1))
-# gameBoard.toBuild(a)
-# print(a.tobuild)
-# for x in range(25):
+# # print(gameBoard.calculateRent(1))
+# # gameBoard.toBuild(a)
+# a.money = 1000000
+# print(a.toBuild)
+# for x in range(500):
 #     gameBoard.build(a, a.money)
 
 # for x in gameBoard.monopoly_board:
