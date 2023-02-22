@@ -227,8 +227,7 @@ class Board:
         average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
         
         for prop in player.toBuild:
-            if prop.house_price <= maxMoneyToBuild and prop.houses < average:
-                print(f'Build {prop.name}')
+            if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
                 return prop
         return False
 
@@ -244,6 +243,7 @@ class Board:
         else:
             buildMe.houses += 1
             player.moneyOut(buildMe.house_price, self)
+            print(f'Build {buildMe.name}')
             return True
     
     ## return all properties to the game (if player lost)

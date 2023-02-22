@@ -49,13 +49,13 @@ class Player:
 
         board.recalculateChanges()
 
+        ## check if there is a property to un mortgage
         while self.unMortgage(board):
             board.recalculateChanges()
 
-        moneyToBuild = self.money - self.cashLimit
-        if moneyToBuild >= 50:
-            while board.build(self, moneyToBuild):
-                pass
+        # check if the player can have a property to build and can build it
+        while board.build(self, self.money - self.cashLimit):
+            pass
 
         dice1 = random.randint(1, 6)
         dice2 = random.randint(1, 6)
@@ -124,7 +124,7 @@ class Player:
             if propertyToMortgage == None: #there is no property To Mortgage
                 self.alive = False
                 board.sellAll(self)
-                print(f'{self.name} is out (no money to pay rent)')
+                print(f'{self.name} is out (no money) ############')
                 return
             if propertyToMortgage.houses > 0:
                 self.moneyIn(int(propertyToMortgage.house_price/2))
