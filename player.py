@@ -120,17 +120,22 @@ class Player:
                         propertyToMortgage = prop
                     elif propertyToMortgage.valueToOwner > prop.valueToOwner:
                         propertyToMortgage = prop
-            
-            if propertyToMortgage == None: #there is no property To Mortgage
+
+            #there is no property To Mortgage
+            if propertyToMortgage == None:
                 self.alive = False
                 board.sellAll(self)
                 print(f'{self.name} is out (no money) ############')
                 return
+
+            ## sell houses
             if propertyToMortgage.houses > 0:
                 self.moneyIn(int(propertyToMortgage.house_price/2))
                 propertyToMortgage.houses -= 1
                 print(f'{self.name} sold one house from {propertyToMortgage.name}')
+
             else:
+                ## check the if the set have houses (can't mortgage property in a set that have houses)
                 houseSold = False
                 if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
                     houseSold = False
@@ -142,7 +147,8 @@ class Player:
                                 print(f'{self.name} sold one house from {propertyToMortgage.name} group')
                                 houseSold = True
                                 break
-                if not houseSold: 
+                ## can't find houses in the set, mortgage the property
+                if not houseSold:
                     propertyToMortgage.isMortgaged = True
                     self.moneyIn(int(propertyToMortgage.price/2))
                     print(f'{self.name} mortgage {propertyToMortgage.name}')

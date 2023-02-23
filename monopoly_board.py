@@ -124,7 +124,7 @@ class Board:
         groups = {}
         for prop in self.monopoly_board:
             if type(prop) == Property:
-                if prop.group in groups and prop.owner != groups[prop.group] or prop.owner == "":
+                if prop.group in groups and prop.owner != groups[prop.group] or prop.owner == "" or prop.isMortgaged:
                     groups[prop.group] = False
                 else:
                     groups[prop.group] = prop.owner
@@ -140,7 +140,7 @@ class Board:
     def calculateStations(self, station):
         stationsCount = 0
         for prop in self.monopoly_board:
-            if type(prop) == Property and prop.type == "station" and station.owner == prop.owner:
+            if type(prop) == Property and prop.type == "station" and station.owner == prop.owner and not prop.isMortgaged:
                 stationsCount += 1
         return stationsCount
 
@@ -173,7 +173,7 @@ class Board:
             return 0
 
     ## check if there a full set with a player
-    # store all properties the player can build in player.tobuild list
+    # store all properties the player can build in player.toBuild list
     def toBuild(self, player):
         # list player can build
         toBuildLits = []
@@ -202,7 +202,7 @@ class Board:
     # check if the player can build (how much they can pay)
     def whatToBuild(self, player, maxMoneyToBuild):
         self.toBuild(player)
-        # first check the number of houses in the first set (in tobuild)
+        # first check the number of houses in the first set (in toBuild)
         if player.toBuild == []:
             return False
         
