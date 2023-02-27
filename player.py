@@ -37,8 +37,10 @@ class Player:
         return money_taken
 
     # positions
-    def moveTo(self, position):
+    def moveTo(self, position, board=None):
         self.position = position
+        if board != None:
+            board.action(self, self.position)
 
     def makeAMove(self, board):
 

@@ -4,7 +4,6 @@ import random
 
 settingStartingMoney = 1500
 
-
 class cell:
     def __init__(self, name, type):
         self.name = name
@@ -19,16 +18,161 @@ class cell:
             elif self.name == "Super Tax":
                 tax = player.moneyOut(200, board)
                 print(f'{player.name} pays {tax} {self.name}')
-        elif self.type == "cc": ## to Do ######################
+        elif self.type == "cc":
             print(f'draw a {self.name}')
-        elif self.type == "chance": # to Do ###################
+            self.community(player, board)
+        elif self.type == "chance":
             print(f'draw a {self.name}')
+            self.chance(player, board)
         elif self.type == "goJail":
             print(f'{self.name}')
-            player.position = 10
+            player.moveTo(10)
             self.inJail = True
         else:
             print(f'You are in {self.name}')
+
+    def community(self, player, board):
+        
+        # draw a card
+        card = board.communityCards.pop(0)
+
+        # auctions
+        match(card):
+            case 0:
+                print("Annuity matures collect 100")
+                player.moneyIn(100)
+            case 1:
+                print("In come tax refund collect 50")
+                player.moneyIn(50)
+            case 2:
+                print("From sale of stock you get 50")
+                player.moneyIn(50)
+            case 3:
+                print("Advance to 'GO'. Collect 200")
+                player.moveTo(0)
+                player.moneyIn(200)
+            case 4:
+                print("Bank error in your favor. Collect 200")
+                player.moneyIn(200)
+            case 5:
+                print("Doctor's fees. Pay 50.")
+                player.moneyOut(50, board)
+            case 6:
+                print("Go directly to jail.")
+                player.moveTo(10)
+                player.inJail = True
+            case 7:
+                print("Pay hospital 100.")
+                player.moneyOut(100, board)
+            case 8:
+                print("Go back to Old Kent road")
+                player.moveTo(1, board)
+            case 9:
+                print("Receive interest on 7%' preference shares 50")
+                player.moneyIn(50)
+            case 10:
+                print("It is your birthday collect 10 from each player")
+                for p in board.players:
+                    if p != player:
+                        p.moneyOut(10, board)
+                        player.moneyIn(10)
+            case 11:
+                print("pay your insurance premium 50")
+                player.moneyOut(50, board)
+            case 12:
+                print("Get Inherit 100")
+                player.moneyIn(100)
+            case 13:
+                print("you won a prize. Collect 10")
+                player.moneyIn(10)
+            case _:
+                print("something wrong with community")
+
+        board.communityCards.append(card)
+    
+    def chance(self, player, board):
+
+        # draw a card
+        card = board.chanceCards.pop(0)
+
+        # auctions
+        match(card):
+            case 0:
+                print("Take a trip to Marylebone Station. Get 200 if you pass go")
+                if player.position > 15:
+                    player.moneyIn(200)
+                player.moveTo(15, board)
+            case 1:
+                print("Advance to Pall Mall. Get 200 if you pass go")
+                if player.position > 11:
+                    player.moneyIn(200)
+                player.moveTo(11, board)
+            case 2:
+                print("Go directly to jail.")
+                player.moveTo(10)
+                player.inJail = True
+            case 3:
+                print("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
+                houses = 0
+                hotels = 0
+                for prop in board.monopoly_board:
+                    if prop == "property" and prop.owner == player:
+                        if prop.house < 5:
+                            houses += prop.house
+                        elif prop.house == 5:
+                            hotels += 1
+                player.moneyOut(25*houses+100*hotels, board)
+            case 4:
+                print("You are assessed for street repair. 40 per house. 115 per hotel")
+                houses = 0
+                hotels = 0
+                for prop in board.monopoly_board:
+                    if prop == "property" and prop.owner == player:
+                        if prop.house < 5:
+                            houses += prop.house
+                        elif prop.house == 5:
+                            hotels += 1
+                player.moneyOut(40*houses+115*hotels, board)
+            case 5:
+                print("Speeding fine 50.")
+                player.moneyOut(50, board)
+            case 6:
+                print("Advance to Mayfair")
+                player.moveTo(39, board)
+            case 7:
+                print("Your building loan matures receive 150")
+                player.moneyIn(150)
+            case 8:
+                print("Pay school fees 150")
+                player.moneyOut(150, board)
+            case 9:
+                print("You won a prize. Collect 100")
+                player.moneyIn(100)
+            case 10:
+                print("Go back three spaces")
+                player.position = player.position - 3
+                player.moveTo(player.position, board)
+            case 11:
+                print("Advance to 'GO'. Collect 200")
+                player.moveTo(0)
+                player.moneyIn(200)
+            case 12:
+                print("Bank pays you dividend 50")
+                player.moneyIn(50)
+            case 13:
+                print("'Drunk in charge'. fine 50")
+                player.moneyOut(50, board)
+            case 14:
+                print("Advance to Trafalgar. Get 200 if you pass go")
+                if player.position > 24:
+                    player.moneyIn(200)
+                player.moveTo(24, board)
+            case _:
+                print("something wrong with community")
+
+        board.chanceCards.append(card)
+
+
 
 class Property:
     def __init__(self, name, type, price, rent_price, house_price, group):
@@ -116,6 +260,13 @@ class Board:
             cell("Super Tax", "Tax"), #200
             Property("Mayfair",           "property",     400,   (50,200, 600, 1400, 1700, 2000),  200,"dark blue")
         ]
+
+        # Community Chest
+        self.communityCards = list(range(0, 14))
+        random.shuffle(self.communityCards)
+        # Chance
+        self.chanceCards = list(range(0, 15))
+        random.shuffle(self.chanceCards)
 
 
     ## used to check if property sets, utils, or stations owned by the same player
