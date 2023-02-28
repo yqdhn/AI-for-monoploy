@@ -1,8 +1,182 @@
-from player import *
 import math
 import random
 
-settingStartingMoney = 1500
+global stut
+
+class Player:
+    def __init__(self, name, buildTechnique, cashLimit):
+        self.name = name
+        self.position = 0
+        self.money = 9999999999999  # start 1500
+        self.buildTechnique = buildTechnique
+        self.cashLimit = cashLimit
+        self.toBuild = []
+        self.wanted = {}
+        self.inJail = False
+        self.roundsInJail = 0
+        self.dicesDoubleCount = 0
+        self.alive = True
+
+    # money management
+    # get paid
+    def moneyIn(self, amount):
+        print(str(amount) + " added to " + self.name)
+        self.money += amount
+        print(self.name + " money become " + str(self.money))
+
+    # pay someone or buy
+    def moneyOut(self, amount, board):
+        print(self.name + " money was " + str(self.money))
+        money_taken = 0
+        self.bankruptPlayer(amount, board)
+        if self.money >= amount:
+            self.money -= amount
+            money_taken = amount
+        else:
+            money_taken = self.money
+            self.money -= money_taken
+        
+        print("become " + str(self.money) + " paid " + str(money_taken))
+        return money_taken
+
+    # positions
+    def moveTo(self, position, board):
+        self.position = position
+        stut[self.position] += 1
+        board.action(self, self.position)
+
+    def makeAMove(self, board):
+
+        playAgain = False
+
+        if not self.alive:
+            return False
+
+        board.recalculateChanges()
+
+        ## check if there is a property to un mortgage
+        while self.unMortgage(board):
+            board.recalculateChanges()
+
+        # check if the player can have a property to build and can build it
+        while board.build(self, self.money - self.cashLimit):
+            pass
+
+        dice1 = random.randint(1, 6)
+        dice2 = random.randint(1, 6)
+
+        if not self.inJail and dice1 == dice2:
+            playAgain = True
+            self.dicesDoubleCount += 1
+            # go to jail if 3 dices doubles
+            if self.dicesDoubleCount == 3:
+                self.inJail = True
+                playAgain = False
+                self.moveTo(10, board)
+                self.dicesDoubleCount = 0
+                print(f'{self.name} went to jail after 3 doubles')
+                return False
+        else:
+            self.dicesDoubleCount = 0
+
+        if self.inJail:
+            if dice1 != dice2:
+                self.roundsInJail += 1
+                if self.roundsInJail > 3:
+                    print(f'{self.name} get out of jail after 3 rounds')
+                    pass
+                elif self.money >= 50:
+                    jailFine = self.moneyOut(50, board)
+                    print(f'{self.name} pays {jailFine} to get out of jail')
+                    self.roundsInJail = 0
+                else:
+                    return False
+            else:
+                playAgain = False
+        self.roundsInJail = 0
+        self.inJail = False
+
+        if not self.alive:
+            return False
+
+        # move the piece
+        print(f'{self.name} position is {self.position} and dices total is {dice1+dice2}')
+        self.position += dice1+dice2
+        # calculate correct cell
+        # and get salary for passing GO (200)
+        if self.position >= 40:
+            self.position = self.position - 40
+            self.moneyIn(200)
+
+        stut[self.position] += 1
+
+        print(f'{self.name} new position is {board.monopoly_board[self.position].name}({self.position})')
+        board.action(self, self.position)
+
+        if playAgain:
+            print(f'{self.name} plays again {dice1}={dice2}')
+            self.makeAMove(board)
+    
+    # take an action if player doesn't have money
+    def bankruptPlayer(self, amount, board):
+        while self.money - amount < 0:
+            propertyToMortgage = None
+            for prop in board.monopoly_board:
+                if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
+                    if propertyToMortgage == None:
+                        propertyToMortgage = prop
+                    elif propertyToMortgage.valueToOwner > prop.valueToOwner:
+                        propertyToMortgage = prop
+
+            #there is no property To Mortgage
+            if propertyToMortgage == None:
+                self.alive = False
+                board.sellAll(self)
+                print(f'{self.name} is out (no money) ############')
+                return
+
+            ## sell houses
+            if propertyToMortgage.houses > 0:
+                self.moneyIn(int(propertyToMortgage.house_price/2))
+                propertyToMortgage.houses -= 1
+                print(f'{self.name} sold one house from {propertyToMortgage.name}')
+
+            else:
+                ## check the if the set have houses (can't mortgage property in a set that have houses)
+                houseSold = False
+                if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
+                    houseSold = False
+                    for prop in board.monopoly_board:
+                        if prop.type == "property" and prop.group == propertyToMortgage.group:
+                            if prop.houses > 0 and prop != propertyToMortgage:
+                                self.moneyIn(int(propertyToMortgage.house_price/2))
+                                prop.houses -= 1
+                                print(f'{self.name} sold one house from {propertyToMortgage.name} group')
+                                houseSold = True
+                                break
+                ## can't find houses in the set, mortgage the property
+                if not houseSold:
+                    propertyToMortgage.isMortgaged = True
+                    self.moneyIn(int(propertyToMortgage.price/2))
+                    print(f'{self.name} mortgage {propertyToMortgage.name}')
+            
+            board.recalculateChanges()
+
+    def unMortgage(self, board):
+        propertyToUnMortgage = None
+        for prop in board.monopoly_board:
+            if prop.type in ["property", "util", "station"] and prop.owner == self and prop.isMortgaged and prop.price/2 <= self.money:
+                if propertyToUnMortgage == None:
+                    propertyToUnMortgage = prop
+                elif propertyToUnMortgage.valueToOwner < prop.valueToOwner:
+                    propertyToUnMortgage = prop
+
+        if propertyToUnMortgage != None:
+            propertyToUnMortgage.isMortgaged = False
+            self.moneyOut(int(propertyToUnMortgage.price/2), board)
+            print(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
+
+    # def tradeProperty(self, board):
 
 class cell:
     def __init__(self, name, type):
@@ -26,7 +200,7 @@ class cell:
             self.chance(player, board)
         elif self.type == "goJail":
             print(f'{self.name}')
-            player.moveTo(10)
+            player.moveTo(10, board)
             self.inJail = True
         else:
             print(f'You are in {self.name}')
@@ -37,56 +211,55 @@ class cell:
         card = board.communityCards.pop(0)
 
         # auctions
-        match(card):
-            case 0:
-                print("Annuity matures collect 100")
-                player.moneyIn(100)
-            case 1:
-                print("In come tax refund collect 50")
-                player.moneyIn(50)
-            case 2:
-                print("From sale of stock you get 50")
-                player.moneyIn(50)
-            case 3:
-                print("Advance to 'GO'. Collect 200")
-                player.moveTo(0)
-                player.moneyIn(200)
-            case 4:
-                print("Bank error in your favor. Collect 200")
-                player.moneyIn(200)
-            case 5:
-                print("Doctor's fees. Pay 50.")
-                player.moneyOut(50, board)
-            case 6:
-                print("Go directly to jail.")
-                player.moveTo(10)
-                player.inJail = True
-            case 7:
-                print("Pay hospital 100.")
-                player.moneyOut(100, board)
-            case 8:
-                print("Go back to Old Kent road")
-                player.moveTo(1, board)
-            case 9:
-                print("Receive interest on 7%' preference shares 50")
-                player.moneyIn(50)
-            case 10:
-                print("It is your birthday collect 10 from each player")
-                for p in board.players:
-                    if p != player:
-                        p.moneyOut(10, board)
-                        player.moneyIn(10)
-            case 11:
-                print("pay your insurance premium 50")
-                player.moneyOut(50, board)
-            case 12:
-                print("Get Inherit 100")
-                player.moneyIn(100)
-            case 13:
-                print("you won a prize. Collect 10")
-                player.moneyIn(10)
-            case _:
-                print("something wrong with community")
+        if card == 0:
+            print("Annuity matures collect 100")
+            player.moneyIn(100)
+        elif card == 1:
+            print("In come tax refund collect 50")
+            player.moneyIn(50)
+        elif card == 2:
+            print("From sale of stock you get 50")
+            player.moneyIn(50)
+        elif card == 3:
+            print("Advance to 'GO'. Collect 200")
+            player.moveTo(0, board)
+            player.moneyIn(200)
+        elif card == 4:
+            print("Bank error in your favor. Collect 200")
+            player.moneyIn(200)
+        elif card == 5:
+            print("Doctor's fees. Pay 50.")
+            player.moneyOut(50, board)
+        elif card == 6:
+            print("Go directly to jail.")
+            player.moveTo(10, board)
+            player.inJail = True
+        elif card == 7:
+            print("Pay hospital 100.")
+            player.moneyOut(100, board)
+        elif card == 8:
+            print("Go back to Old Kent road")
+            player.moveTo(1, board)
+        elif card == 9:
+            print("Receive interest on 7%' preference shares 50")
+            player.moneyIn(50)
+        elif card == 10:
+            print("It is your birthday collect 10 from each player")
+            for p in board.players:
+                if p != player:
+                    p.moneyOut(10, board)
+                    player.moneyIn(10)
+        elif card == 11:
+            print("pay your insurance premium 50")
+            player.moneyOut(50, board)
+        elif card == 12:
+            print("Get Inherit 100")
+            player.moneyIn(100)
+        elif card == 13:
+            print("you won a prize. Collect 10")
+            player.moneyIn(10)
+        else:
+            print("something wrong with community")
 
         board.communityCards.append(card)
     
@@ -96,79 +269,77 @@ class cell:
         card = board.chanceCards.pop(0)
 
         # auctions
-        match(card):
-            case 0:
-                print("Take a trip to Marylebone Station. Get 200 if you pass go")
-                if player.position > 15:
-                    player.moneyIn(200)
-                player.moveTo(15, board)
-            case 1:
-                print("Advance to Pall Mall. Get 200 if you pass go")
-                if player.position > 11:
-                    player.moneyIn(200)
-                player.moveTo(11, board)
-            case 2:
-                print("Go directly to jail.")
-                player.moveTo(10)
-                player.inJail = True
-            case 3:
-                print("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
-                houses = 0
-                hotels = 0
-                for prop in board.monopoly_board:
-                    if prop == "property" and prop.owner == player:
-                        if prop.house < 5:
-                            houses += prop.house
-                        elif prop.house == 5:
-                            hotels += 1
-                player.moneyOut(25*houses+100*hotels, board)
-            case 4:
-                print("You are assessed for street repair. 40 per house. 115 per hotel")
-                houses = 0
-                hotels = 0
-                for prop in board.monopoly_board:
-                    if prop == "property" and prop.owner == player:
-                        if prop.house < 5:
-                            houses += prop.house
-                        elif prop.house == 5:
-                            hotels += 1
-                player.moneyOut(40*houses+115*hotels, board)
-            case 5:
-                print("Speeding fine 50.")
-                player.moneyOut(50, board)
-            case 6:
-                print("Advance to Mayfair")
-                player.moveTo(39, board)
-            case 7:
-                print("Your building loan matures receive 150")
-                player.moneyIn(150)
-            case 8:
-                print("Pay school fees 150")
-                player.moneyOut(150, board)
-            case 9:
-                print("You won a prize. Collect 100")
-                player.moneyIn(100)
-            case 10:
-                print("Go back three spaces")
-                player.position = player.position - 3
-                player.moveTo(player.position, board)
-            case 11:
-                print("Advance to 'GO'. Collect 200")
-                player.moveTo(0)
+        if card == 0:
+            print("Take a trip to Marylebone Station. Get 200 if you pass go")
+            if player.position > 15:
                 player.moneyIn(200)
-            case 12:
-                print("Bank pays you dividend 50")
-                player.moneyIn(50)
-            case 13:
-                print("'Drunk in charge'. fine 50")
-                player.moneyOut(50, board)
-            case 14:
-                print("Advance to Trafalgar. Get 200 if you pass go")
-                if player.position > 24:
-                    player.moneyIn(200)
-                player.moveTo(24, board)
-            case _:
-                print("something wrong with community")
+            player.moveTo(15, board)
+        elif card == 1:
+            print("Advance to Pall Mall. Get 200 if you pass go")
+            if player.position > 11:
+                player.moneyIn(200)
+            player.moveTo(11, board)
+        elif card == card == 2:
+            print("Go directly to jail.")
+            player.moveTo(10, board)
+            player.inJail = True
+        elif card == 3:
+            print("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
+            houses = 0
+            hotels = 0
+            for prop in board.monopoly_board:
+                if prop == "property" and prop.owner == player:
+                    if prop.house < 5:
+                        houses += prop.house
+                    elif prop.house == 5:
+                        hotels += 1
+            player.moneyOut(25*houses+100*hotels, board)
+        elif card == 4:
+            print("You are assessed for street repair. 40 per house. 115 per hotel")
+            houses = 0
+            hotels = 0
+            for prop in board.monopoly_board:
+                if prop == "property" and prop.owner == player:
+                    if prop.house < 5:
+                        houses += prop.house
+                    elif prop.house == 5:
+                        hotels += 1
+            player.moneyOut(40*houses+115*hotels, board)
+        elif card == 5:
+            print("Speeding fine 50.")
+            player.moneyOut(50, board)
+        elif card == 6:
+            print("Advance to Mayfair")
+            player.moveTo(39, board)
+        elif card == 7:
+            print("Your building loan matures receive 150")
+            player.moneyIn(150)
+        elif card == 8:
+            print("Pay school fees 150")
+            player.moneyOut(150, board)
+        elif card == 9:
+            print("You won a prize. Collect 100")
+            player.moneyIn(100)
+        elif card == 10:
+            print("Go back three spaces")
+            player.moveTo(player.position - 3, board)
+        elif card == 11:
+            print("Advance to 'GO'. Collect 200")
+            player.moveTo(0, board)
+            player.moneyIn(200)
+        elif card == 12:
+            print("Bank pays you dividend 50")
+            player.moneyIn(50)
+        elif card == 13:
+            print("'Drunk in charge'. fine 50")
+            player.moneyOut(50, board)
+        elif card == 14:
+            print("Advance to Trafalgar. Get 200 if you pass go")
+            if player.position > 24:
+                player.moneyIn(200)
+            player.moveTo(24, board)
+        else:
+            print("something wrong with community")
 
         board.chanceCards.append(card)
 
@@ -436,17 +607,19 @@ class Board:
 
     def propertyValue(self, player, property):
         share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
-        rent = self.rentReturn(property)
+        rentReturn = self.rentReturn(property)
         financial = self.financialStatus(player, property)
-        valueOfHouses = rent[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10) 
+        valueOfHouses = rent[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
+        probablity = 0 ########### to do next
+        rentValue = 0 ########### to do next
 
     	# check rent return according to the financial status
         idx = int(financial)
         rentFinancial = 0
         if financial < 5:
-            rentFinancial = (rent[idx] * (idx + 1 - financial)) + (rent[idx + 1] * (financial - idx))
+            rentFinancial = (rentReturn[idx] * (idx + 1 - financial)) + (rentReturn[idx + 1] * (financial - idx))
         else:
-            rentFinancial = rent[idx]
+            rentFinancial = rentReturn[idx]
         rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
 
         value = round(share + max(rentFinancial, valueOfHouses), 3)
@@ -555,6 +728,8 @@ players = [a, b, c, d]
 
 gameBoard = Board(players)
 
+stut = [0] * 40
+
 playing = True
 rounds = 0
 while playing:
@@ -567,7 +742,7 @@ while playing:
             if player.alive:
                 print(f'Number of rounds is {rounds}')
                 print(player.name + " is the winner.\n")
-    if rounds > 500:
+    if rounds > 10000:
         print("number of rounds exceeded\n")
         playing = False
     rounds += 1
@@ -583,6 +758,15 @@ for x in gameBoard.monopoly_board:
                 print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner. Value {x.valueToOwner}')
             else:
                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
+
+print("\n")
+s = sum(stut)
+m = max(stut)
+for x in gameBoard.monopoly_board:
+    print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)]/m*10,4)}')
+
+for x in gameBoard.monopoly_board:
+    print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)])}')
 
 
 # y = 1
