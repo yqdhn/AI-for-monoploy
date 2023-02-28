@@ -7,7 +7,7 @@ class Player:
     def __init__(self, name, buildTechnique, cashLimit):
         self.name = name
         self.position = 0
-        self.money = 9999999999999  # start 1500
+        self.money = 1500  # start 1500
         self.buildTechnique = buildTechnique
         self.cashLimit = cashLimit
         self.toBuild = []
@@ -102,7 +102,7 @@ class Player:
         # move the piece
         print(f'{self.name} position is {self.position} and dices total is {dice1+dice2}')
         self.position += dice1+dice2
-        # calculate correct cell
+        # calculate correct cell (if more that 40)
         # and get salary for passing GO (200)
         if self.position >= 40:
             self.position = self.position - 40
@@ -609,7 +609,7 @@ class Board:
         share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
         rentReturn = self.rentReturn(property)
         financial = self.financialStatus(player, property)
-        valueOfHouses = rent[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
+        valueOfHouses = rentReturn[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
         probablity = 0 ########### to do next
         rentValue = 0 ########### to do next
 
@@ -657,17 +657,10 @@ class Board:
         else:
             self.monopoly_board[position].action(player, self)
 
-## check if there is a winner (one player alive)
-def gameOver(players):
-    playersAlive = 0
-    for player in players:
-        if player.alive:
-            playersAlive += 1
-        
-    if playersAlive > 1:
-        return False
-    else:
-        return True
+    ## check if there is a winner (one player alive)
+    def gameOver(self):
+        playersAlive = sum(1 for player in players if player.alive)
+        return playersAlive <= 1
 
 
 def play(players, max_rounds):
@@ -688,7 +681,7 @@ def play(players, max_rounds):
         for player in players:
             player.makeAMove(gameBoard)
             print("")
-        if gameOver(players):
+        if gameBoard.gameOver():
             stop = False
             for player in players:
                 if player.alive:
@@ -736,13 +729,14 @@ while playing:
     for player in players:
         player.makeAMove(gameBoard)
         print("")
-    if gameOver(players):
-        playing = False
-        for player in players:
-            if player.alive:
-                print(f'Number of rounds is {rounds}')
-                print(player.name + " is the winner.\n")
-    if rounds > 10000:
+        if gameBoard.gameOver():
+            playing = False
+            for player in players:
+                if player.alive:
+                    print(f'Number of rounds is {rounds}')
+                    print(player.name + " is the winner.\n")
+            break
+    if rounds > 500:
         print("number of rounds exceeded\n")
         playing = False
     rounds += 1
