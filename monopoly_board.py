@@ -42,13 +42,10 @@ class Player:
     # positions
     def moveTo(self, position, board):
         self.position = position
-        stut[self.position] += 1
         board.action(self, self.position)
 
     def makeAMove(self, board):
-
-        playAgain = False
-
+        # player must be alive to play
         if not self.alive:
             return False
 
@@ -62,6 +59,7 @@ class Player:
         while board.build(self, self.money - self.cashLimit):
             pass
 
+        playAgain = False
         dice1 = random.randint(1, 6)
         dice2 = random.randint(1, 6)
 
@@ -107,8 +105,6 @@ class Player:
         if self.position >= 40:
             self.position = self.position - 40
             self.moneyIn(200)
-
-        stut[self.position] += 1
 
         print(f'{self.name} new position is {board.monopoly_board[self.position].name}({self.position})')
         board.action(self, self.position)
@@ -467,27 +463,26 @@ class Board:
         return stationsCount
 
 
-    def calculateRent(self, position):
-        prop = self.monopoly_board[position]
-        if type(prop) == Property:
-            
+    def calculateRent(self, property):
+        # prop = self.monopoly_board[position]
+        if type(property) == Property:
             ## normal property rent (count houses if there some)
-            if prop.type == "property":
-                if prop.houses == 0 and prop.isFullSet:
-                    return prop.rent_price[0]*2
+            if property.type == "property":
+                if property.houses == 0 and property.isFullSet:
+                    return property.rent_price[0]*2
                 else:
-                    return prop.rent_price[prop.houses]
+                    return property.rent_price[property.houses]
 
             ## utility rent (if have 1 or 2) 
-            elif prop.type == "util":
-                if prop.isFullSet:
+            elif property.type == "util":
+                if property.isFullSet:
                     return (random.randint(1, 6)+random.randint(1, 6)) * 10
                 else:
                     return (random.randint(1, 6)+random.randint(1, 6)) * 4
             
             ## station rent (consider how many player own)
-            elif prop.type == "station":
-                return prop.rent_price[self.calculateStations(prop)]
+            elif property.type == "station":
+                return property.rent_price[self.calculateStations(property)]
 
             else:
                 return "something wrong with rent"
@@ -587,14 +582,12 @@ class Board:
                 propertiesCount += 1
                 if prop.owner == player:
                     ownedProperties += 1
-        
         return ownedProperties / propertiesCount
     
     def rentReturn(self, property):
         theReturn = []
         for i, rent in enumerate(property.rent_price):
             theReturn.append(rent / (property.house_price*i + property.price))
-
         return theReturn
     
     # check ability to build
@@ -610,8 +603,8 @@ class Board:
         rentReturn = self.rentReturn(property)
         financial = self.financialStatus(player, property)
         valueOfHouses = rentReturn[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
-        probablity = 0 ########### to do next
-        rentValue = 0 ########### to do next
+        probablityOfLanding = 0 ########### to do next
+        rentAmount = self.calculateRent(property) / 2000 * 10 ########### to do next
 
     	# check rent return according to the financial status
         idx = int(financial)
@@ -650,7 +643,7 @@ class Board:
         # Landed on a property - calculate rent first
         if type(self.monopoly_board[position]) == Property:
             # calculate the rent one would have to pay (but not pay it yet)
-            rent = self.calculateRent(position)
+            rent = self.calculateRent(self.monopoly_board[position])
             # pass action to to the cell
             self.monopoly_board[position].action(player, self, rent)
         # other cells
@@ -729,6 +722,7 @@ while playing:
     for player in players:
         player.makeAMove(gameBoard)
         print("")
+        stut[player.position] += 1
         if gameBoard.gameOver():
             playing = False
             for player in players:
@@ -753,14 +747,14 @@ for x in gameBoard.monopoly_board:
             else:
                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
 
-print("\n")
-s = sum(stut)
-m = max(stut)
-for x in gameBoard.monopoly_board:
-    print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)]/m*10,4)}')
-
-for x in gameBoard.monopoly_board:
-    print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)])}')
+# print("\n")
+# s = sum(stut)
+# m = max(stut)
+# for x in gameBoard.monopoly_board:
+#     print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)]/m*10,4)}')
+# print("\n")
+# for x in gameBoard.monopoly_board:
+#     print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)])}')
 
 
 # y = 1
