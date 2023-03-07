@@ -11,7 +11,7 @@ class Player:
         self.buildTechnique = buildTechnique
         self.cashLimit = cashLimit
         self.toBuild = []
-        self.wanted = {}
+        # self.wanted = {}
         self.inJail = False
         self.roundsInJail = 0
         self.dicesDoubleCount = 0
@@ -598,15 +598,15 @@ class Board:
         return average
 
 
-    def propertyValue(self, player, property):
+    def propertyEvaluation(self, player, property):
         share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
-        rentReturn = self.rentReturn(property)
-        financial = self.financialStatus(player, property)
-        valueOfHouses = rentReturn[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
-        probablityOfLanding = 0 ########### to do next
-        rentAmount = self.calculateRent(property) / 2000 * 10 ########### to do next
+        # valueOfHouses = rentReturn[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
+        probabilityOfLanding = 0 ########### to do next
+        rentAmount = self.calculateRent(property) / 2000 * 10
 
     	# check rent return according to the financial status
+        rentReturn = self.rentReturn(property)
+        financial = self.financialStatus(player, property)
         idx = int(financial)
         rentFinancial = 0
         if financial < 5:
@@ -615,20 +615,20 @@ class Board:
             rentFinancial = rentReturn[idx]
         rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
 
-        value = round(share + max(rentFinancial, valueOfHouses), 3)
+        value = round(share + rentFinancial + probabilityOfLanding + rentAmount, 3)
         return value
 
-    def wantedProperties(self, player):
-        for prop in self.monopoly_board:
-            if prop.type == "property" and prop.owner != player and prop.owner != "" and prop.houses == 0:
-                player.wanted[prop] = self.propertyValue(player, prop)
+    # def wantedProperties(self, player):
+    #     for prop in self.monopoly_board:
+    #         if prop.type == "property" and prop.owner != player and prop.owner != "" and prop.houses == 0:
+    #             player.wanted[prop] = self.propertyEvaluation(player, prop)
 
 
     # The value of all properties the player own (add in the board)
     def valuePlayersProperties(self, player):
         for prop in self.monopoly_board:
             if prop.type == "property" and prop.owner == player:
-                prop.valueToOwner = self.propertyValue(player, prop)
+                prop.valueToOwner = self.propertyEvaluation(player, prop)
             elif prop.type in ["util", "station"]:
                 prop.valueToOwner == 1
 
@@ -636,7 +636,7 @@ class Board:
     def recalculateChanges(self):
         self.isSets()
         for player in self.players:
-            self.wantedProperties(player)
+            # self.wantedProperties(player)
             self.valuePlayersProperties(player)
 
     def action(self, player, position):
