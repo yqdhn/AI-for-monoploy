@@ -2,21 +2,29 @@ import math
 import random
 
 global stut
+settingStartingSalary = 1500
 
 class Player:
-    def __init__(self, name, buildTechnique, cashLimit):
+    def __init__(self, name, strategy):
         self.name = name
         self.position = 0
-        self.money = 1500  # start 1500
-        self.buildTechnique = buildTechnique
-        self.cashLimit = cashLimit
+        self.money = settingStartingSalary  # start 1500
+        self.strategy = strategy
         self.toBuild = []
-        # self.wanted = {}
         self.inJail = False
         self.roundsInJail = 0
         self.dicesDoubleCount = 0
         self.alive = True
 
+    def setToDefault(self):
+        self.position = 0
+        self.money = settingStartingSalary  # start 1500
+        self.toBuild = []
+        self.inJail = False
+        self.roundsInJail = 0
+        self.dicesDoubleCount = 0
+        self.alive = True
+        
     # money management
     # get paid
     def moneyIn(self, amount):
@@ -25,10 +33,10 @@ class Player:
         print(self.name + " money become " + str(self.money))
 
     # pay someone or buy
-    def moneyOut(self, amount, board):
+    def moneyOut(self, amount, state):
         print(self.name + " money was " + str(self.money))
         money_taken = 0
-        self.bankruptPlayer(amount, board)
+        self.bankruptPlayer(amount, state)
         if self.money >= amount:
             self.money -= amount
             money_taken = amount
@@ -40,23 +48,23 @@ class Player:
         return money_taken
 
     # positions
-    def moveTo(self, position, board):
+    def moveTo(self, position, state):
         self.position = position
-        board.action(self, self.position)
+        state.board.action(state, self)
 
-    def makeAMove(self, board):
+    def makeAMove(self, state):
         # player must be alive to play
         if not self.alive:
             return False
 
-        board.recalculateChanges()
+        state.board.recalculateChanges()
 
         ## check if there is a property to un mortgage
-        while self.unMortgage(board):
-            board.recalculateChanges()
+        while self.unMortgage(state):
+            state.board.recalculateChanges()
 
         # check if the player can have a property to build and can build it
-        while board.build(self, self.money - self.cashLimit):
+        while state.board.build(self, self.money - self.strategy.cash_threshold):
             pass
 
         playAgain = False
@@ -70,7 +78,7 @@ class Player:
             if self.dicesDoubleCount == 3:
                 self.inJail = True
                 playAgain = False
-                self.moveTo(10, board)
+                self.moveTo(10, state)
                 self.dicesDoubleCount = 0
                 print(f'{self.name} went to jail after 3 doubles')
                 return False
@@ -84,7 +92,7 @@ class Player:
                     print(f'{self.name} get out of jail after 3 rounds')
                     pass
                 elif self.money >= 50:
-                    jailFine = self.moneyOut(50, board)
+                    jailFine = self.moneyOut(50, state)
                     print(f'{self.name} pays {jailFine} to get out of jail')
                     self.roundsInJail = 0
                 else:
@@ -102,22 +110,22 @@ class Player:
         self.position += dice1+dice2
         # calculate correct cell (if more that 40)
         # and get salary for passing GO (200)
-        if self.position >= 40:
-            self.position = self.position - 40
+        if self.position >= len(state.board.monopoly_board):
+            self.position = self.position - len(state.board.monopoly_board)
             self.moneyIn(200)
 
-        print(f'{self.name} new position is {board.monopoly_board[self.position].name}({self.position})')
-        board.action(self, self.position)
+        print(f'{self.name} new position is {state.board.monopoly_board[self.position].name}({self.position})')
+        state.board.action(state, self)
 
         if playAgain:
             print(f'{self.name} plays again {dice1}={dice2}')
-            self.makeAMove(board)
+            self.makeAMove(state)
     
     # take an action if player doesn't have money
-    def bankruptPlayer(self, amount, board):
+    def bankruptPlayer(self, amount, state):
         while self.money - amount < 0:
             propertyToMortgage = None
-            for prop in board.monopoly_board:
+            for prop in state.board.monopoly_board:
                 if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
                     if propertyToMortgage == None:
                         propertyToMortgage = prop
@@ -127,7 +135,7 @@ class Player:
             #there is no property To Mortgage
             if propertyToMortgage == None:
                 self.alive = False
-                board.sellAll(self)
+                state.board.sellAll(self) # return all properties to bank
                 print(f'{self.name} is out (no money) ############')
                 return
 
@@ -142,7 +150,7 @@ class Player:
                 houseSold = False
                 if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
                     houseSold = False
-                    for prop in board.monopoly_board:
+                    for prop in state.board.monopoly_board:
                         if prop.type == "property" and prop.group == propertyToMortgage.group:
                             if prop.houses > 0 and prop != propertyToMortgage:
                                 self.moneyIn(int(propertyToMortgage.house_price/2))
@@ -156,11 +164,11 @@ class Player:
                     self.moneyIn(int(propertyToMortgage.price/2))
                     print(f'{self.name} mortgage {propertyToMortgage.name}')
             
-            board.recalculateChanges()
+            state.board.recalculateChanges()
 
-    def unMortgage(self, board):
+    def unMortgage(self, state):
         propertyToUnMortgage = None
-        for prop in board.monopoly_board:
+        for prop in state.board.monopoly_board:
             if prop.type in ["property", "util", "station"] and prop.owner == self and prop.isMortgaged and prop.price/2 <= self.money:
                 if propertyToUnMortgage == None:
                     propertyToUnMortgage = prop
@@ -169,7 +177,7 @@ class Player:
 
         if propertyToUnMortgage != None:
             propertyToUnMortgage.isMortgaged = False
-            self.moneyOut(int(propertyToUnMortgage.price/2), board)
+            self.moneyOut(int(propertyToUnMortgage.price/2), state)
             print(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
 
     # def tradeProperty(self, board):
@@ -179,32 +187,32 @@ class cell:
         self.name = name
         self.type = type
 
-    def action(self, player, board):
+    def action(self, player, state):
 
         if self.type == "Tax":
             if self.name == "Income Tax":
-                tax = player.moneyOut(100, board)
+                tax = player.moneyOut(100, state)
                 print(f'{player.name} pays {tax} {self.name}')
             elif self.name == "Super Tax":
-                tax = player.moneyOut(200, board)
+                tax = player.moneyOut(200, state)
                 print(f'{player.name} pays {tax} {self.name}')
         elif self.type == "cc":
             print(f'draw a {self.name}')
-            self.community(player, board)
+            self.community(player, state)
         elif self.type == "chance":
             print(f'draw a {self.name}')
-            self.chance(player, board)
+            self.chance(player, state)
         elif self.type == "goJail":
             print(f'{self.name}')
-            player.moveTo(10, board)
-            self.inJail = True
+            player.moveTo(10, state)
+            player.inJail = True
         else:
             print(f'You are in {self.name}')
 
-    def community(self, player, board):
+    def community(self, player, state):
         
         # draw a card
-        card = board.communityCards.pop(0)
+        card = state.board.communityCards.pop(0)
 
         # auctions
         if card == 0:
@@ -218,36 +226,36 @@ class cell:
             player.moneyIn(50)
         elif card == 3:
             print("Advance to 'GO'. Collect 200")
-            player.moveTo(0, board)
+            player.moveTo(0, state)
             player.moneyIn(200)
         elif card == 4:
             print("Bank error in your favor. Collect 200")
             player.moneyIn(200)
         elif card == 5:
             print("Doctor's fees. Pay 50.")
-            player.moneyOut(50, board)
+            player.moneyOut(50, state)
         elif card == 6:
             print("Go directly to jail.")
-            player.moveTo(10, board)
+            player.moveTo(10, state)
             player.inJail = True
         elif card == 7:
             print("Pay hospital 100.")
-            player.moneyOut(100, board)
+            player.moneyOut(100, state)
         elif card == 8:
             print("Go back to Old Kent road")
-            player.moveTo(1, board)
+            player.moveTo(1, state)
         elif card == 9:
             print("Receive interest on 7%' preference shares 50")
             player.moneyIn(50)
         elif card == 10:
             print("It is your birthday collect 10 from each player")
-            for p in board.players:
+            for p in state.players:
                 if p != player:
-                    p.moneyOut(10, board)
+                    p.moneyOut(10, state)
                     player.moneyIn(10)
         elif card == 11:
             print("pay your insurance premium 50")
-            player.moneyOut(50, board)
+            player.moneyOut(50, state)
         elif card == 12:
             print("Get Inherit 100")
             player.moneyIn(100)
@@ -257,87 +265,87 @@ class cell:
         else:
             print("something wrong with community")
 
-        board.communityCards.append(card)
+        state.board.communityCards.append(card)
     
-    def chance(self, player, board):
+    def chance(self, player, state):
 
         # draw a card
-        card = board.chanceCards.pop(0)
+        card = state.board.chanceCards.pop(0)
 
         # auctions
         if card == 0:
             print("Take a trip to Marylebone Station. Get 200 if you pass go")
             if player.position > 15:
                 player.moneyIn(200)
-            player.moveTo(15, board)
+            player.moveTo(15, state)
         elif card == 1:
             print("Advance to Pall Mall. Get 200 if you pass go")
             if player.position > 11:
                 player.moneyIn(200)
-            player.moveTo(11, board)
+            player.moveTo(11, state)
         elif card == card == 2:
             print("Go directly to jail.")
-            player.moveTo(10, board)
+            player.moveTo(10, state)
             player.inJail = True
         elif card == 3:
             print("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
             houses = 0
             hotels = 0
-            for prop in board.monopoly_board:
+            for prop in state.board.monopoly_board:
                 if prop == "property" and prop.owner == player:
                     if prop.house < 5:
                         houses += prop.house
                     elif prop.house == 5:
                         hotels += 1
-            player.moneyOut(25*houses+100*hotels, board)
+            player.moneyOut(25*houses+100*hotels, state)
         elif card == 4:
             print("You are assessed for street repair. 40 per house. 115 per hotel")
             houses = 0
             hotels = 0
-            for prop in board.monopoly_board:
+            for prop in state.board.monopoly_board:
                 if prop == "property" and prop.owner == player:
                     if prop.house < 5:
                         houses += prop.house
                     elif prop.house == 5:
                         hotels += 1
-            player.moneyOut(40*houses+115*hotels, board)
+            player.moneyOut(40*houses+115*hotels, state)
         elif card == 5:
             print("Speeding fine 50.")
-            player.moneyOut(50, board)
+            player.moneyOut(50, state)
         elif card == 6:
             print("Advance to Mayfair")
-            player.moveTo(39, board)
+            player.moveTo(39, state)
         elif card == 7:
             print("Your building loan matures receive 150")
             player.moneyIn(150)
         elif card == 8:
             print("Pay school fees 150")
-            player.moneyOut(150, board)
+            player.moneyOut(150, state)
         elif card == 9:
             print("You won a prize. Collect 100")
             player.moneyIn(100)
         elif card == 10:
             print("Go back three spaces")
-            player.moveTo(player.position - 3, board)
+            player.moveTo(player.position - 3, state)
         elif card == 11:
             print("Advance to 'GO'. Collect 200")
-            player.moveTo(0, board)
+            player.moveTo(0, state)
             player.moneyIn(200)
         elif card == 12:
             print("Bank pays you dividend 50")
             player.moneyIn(50)
         elif card == 13:
             print("'Drunk in charge'. fine 50")
-            player.moneyOut(50, board)
+            player.moneyOut(50, state)
         elif card == 14:
             print("Advance to Trafalgar. Get 200 if you pass go")
             if player.position > 24:
                 player.moneyIn(200)
-            player.moveTo(24, board)
+            player.moveTo(24, state)
         else:
             print("something wrong with community")
 
-        board.chanceCards.append(card)
+        state.board.chanceCards.append(card)
 
 
 
@@ -355,7 +363,7 @@ class Property:
         self.owner = ""
         self.valueToOwner = 0
 
-    def action(self, player, board, rent=None):
+    def action(self, player, state, rent=None):
         # owned
         if self.owner == player:
             print(player.name + " is the owner of " + self.name)
@@ -364,7 +372,7 @@ class Property:
         # for sale
         elif self.owner == "":
             if player.money >= self.price:
-                player.moneyOut(self.price, board)
+                player.moneyOut(self.price, state)
                 self.owner = player
                 print(player.name + " buy " + self.name)
             else:
@@ -375,15 +383,13 @@ class Property:
             if self.isMortgaged:
                 print(f'{self.name} is mortgaged, no rent for {self.owner.name}')
             else:
-                money_taken = player.moneyOut(rent, board)
+                money_taken = player.moneyOut(rent, state)
                 self.owner.moneyIn(money_taken)
                 print(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
 
 
 class Board:
-    def __init__(self, players):
-        self.players = players
-
+    def __init__(self):
         self.monopoly_board = [
             cell("Go", "go"),
                      #    name              type         price     rent price             house price   group
@@ -435,6 +441,13 @@ class Board:
         self.chanceCards = list(range(0, 15))
         random.shuffle(self.chanceCards)
 
+    def setToDefault(self):
+        for prop in self.monopoly_board:
+            if type(prop) == Property:
+                self.isFullSet = False
+                self.isMortgaged = False
+                self.houses = 0
+                self.owner = ""
 
     ## used to check if property sets, utils, or stations owned by the same player
     # it update 'isFullSet' for each
@@ -464,7 +477,6 @@ class Board:
 
 
     def calculateRent(self, property):
-        # prop = self.monopoly_board[position]
         if type(property) == Property:
             ## normal property rent (count houses if there some)
             if property.type == "property":
@@ -503,15 +515,15 @@ class Board:
         # for i in toBuildLits:
         #     print(i.name)
 
-        # three techniques to build houses
-        if player.buildTechnique == "random":
-            random.shuffle(toBuildLits)
-        elif player.buildTechnique == "cheapest":
-            toBuildLits.sort(key=lambda x: (x.house_price, x.rent_price[0]))
-        elif player.buildTechnique == "expensive":
-            toBuildLits.sort(key=lambda x: (-x.house_price, -x.rent_price[0]))
-        else:
-            return "something wrong with buildTechnique"
+        # # three techniques to build houses
+        # if player.buildTechnique == "random":
+        #     random.shuffle(toBuildLits)
+        # elif player.buildTechnique == "cheapest":
+        #     toBuildLits.sort(key=lambda x: (x.house_price, x.rent_price[0]))
+        # elif player.buildTechnique == "expensive":
+        #     toBuildLits.sort(key=lambda x: (-x.house_price, -x.rent_price[0]))
+        # else:
+        #     return "something wrong with buildTechnique"
         
         player.toBuild = toBuildLits
     
@@ -523,29 +535,29 @@ class Board:
         if player.toBuild == []:
             return False
         
-        build = None
-        for i, prop in enumerate(player.toBuild):
-            if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
-                build = player.toBuild[i]
-                buildGroup = build.group
-                break
-        if build == None:
-            return False
+        # build = None
+        # for i, prop in enumerate(player.toBuild):
+        #     if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
+        #         build = player.toBuild[i]
+        #         buildGroup = build.group
+        #         break
+        # if build == None:
+        #     return False
 
-        numberOfHousesInSet = 0
-        numberOfProperties = 0
-        for prop in player.toBuild:
-            if prop.group == buildGroup:
-                numberOfHousesInSet += prop.houses
-                numberOfProperties += 1
+        # numberOfHousesInSet = 0
+        # numberOfProperties = 0
+        # for prop in player.toBuild:
+        #     if prop.group == buildGroup:
+        #         numberOfHousesInSet += prop.houses
+        #         numberOfProperties += 1
         
-        # check max build in the properties in a set
-        # that ensure we build all properties evenly (max 1 house difference)
-        average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
+        # # check max build in the properties in a set
+        # # that ensure we build all properties evenly (max 1 house difference)
+        # average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
         
-        for prop in player.toBuild:
-            if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
-                return prop
+        # for prop in player.toBuild:
+        #     if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
+        #         return prop
         return False
 
     # this function do build in properties
@@ -571,7 +583,6 @@ class Board:
                 prop.houses = 0
                 prop.isMortgaged = False
                 prop.isFullSet = False
-                self.valueToOwner = 0
 
     ## check how valuable the property of some player
     def propertyShareInGroup(self, group, player):
@@ -584,39 +595,38 @@ class Board:
                     ownedProperties += 1
         return ownedProperties / propertiesCount
     
-    def rentReturn(self, property):
-        theReturn = []
-        for i, rent in enumerate(property.rent_price):
-            theReturn.append(rent / (property.house_price*i + property.price))
-        return theReturn
+    # def rentReturn(self, property):
+    #     theReturn = []
+    #     for i, rent in enumerate(property.rent_price):
+    #         theReturn.append(rent / (property.house_price*i + property.price))
+    #     return theReturn
     
     # check ability to build
     # return average number of houses can build according to money have
-    def financialStatus(self, player, property):
-        numberOfHousesCanBuild = (player.money - player.cashLimit) / property.house_price
-        average =  min(numberOfHousesCanBuild / (2 if  property.group in ["dark blue", "brown"] else 3), 5)
-        return average
+    # def financialStatus(self, player, property):
+    #     numberOfHousesCanBuild = (player.money - player.cashLimit) / property.house_price
+    #     average =  min(numberOfHousesCanBuild / (2 if  property.group in ["dark blue", "brown"] else 3), 5)
+    #     return average
 
 
-    def propertyEvaluation(self, player, property):
-        share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
-        # valueOfHouses = rentReturn[property.houses] * 10/1.622  # calculate the value of having houses (and calling to 10)
-        probabilityOfLanding = 0 ########### to do next
-        rentAmount = self.calculateRent(property) / 2000 * 10
+    # def propertyEvaluation(self, player, property):
+    #     share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
+    #     rentReturn = property.rent_price[0] / property.price
+    #     probabilityOfLanding = 0 ########### to do next
+    #     rentAmount = self.calculateRent(property) / 2000 * 10
 
-    	# check rent return according to the financial status
-        rentReturn = self.rentReturn(property)
-        financial = self.financialStatus(player, property)
-        idx = int(financial)
-        rentFinancial = 0
-        if financial < 5:
-            rentFinancial = (rentReturn[idx] * (idx + 1 - financial)) + (rentReturn[idx + 1] * (financial - idx))
-        else:
-            rentFinancial = rentReturn[idx]
-        rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
+    # 	# check rent return according to the financial status
+    #     # financial = self.financialStatus(player, property)
+    #     # idx = int(financial)
+    #     # rentFinancial = 0
+    #     # if financial < 5:
+    #     #     rentFinancial = (rentReturn[idx] * (idx + 1 - financial)) + (rentReturn[idx + 1] * (financial - idx))
+    #     # else:
+    #     #     rentFinancial = rentReturn[idx]
+    #     # rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
 
-        value = round(share + rentFinancial + probabilityOfLanding + rentAmount, 3)
-        return value
+    #     value = round(share  + probabilityOfLanding + rentAmount, 3)
+    #     return value
 
     # def wantedProperties(self, player):
     #     for prop in self.monopoly_board:
@@ -625,71 +635,122 @@ class Board:
 
 
     # The value of all properties the player own (add in the board)
-    def valuePlayersProperties(self, player):
+    # def valuePlayersProperties(self, player):
+    #     for prop in self.monopoly_board:
+    #         if prop.type == "property" and prop.owner == player:
+    #             prop.valueToOwner = self.propertyEvaluation(player, prop)
+    #         elif prop.type in ["util", "station"]:
+    #             prop.valueToOwner == 1
+    
+    # calculate the number of deadly properties
+    def dangerousSpaces(self, player):
+        deadly = 0
         for prop in self.monopoly_board:
-            if prop.type == "property" and prop.owner == player:
-                prop.valueToOwner = self.propertyEvaluation(player, prop)
-            elif prop.type in ["util", "station"]:
-                prop.valueToOwner == 1
+            if prop.type in ["property", "station"] and prop.owner != player and self.calculateRent(prop) > self.money:
+                deadly += 1
+        return deadly / len(self.monopoly_board)
 
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
         self.isSets()
-        for player in self.players:
+        # for player in self.players:
             # self.wantedProperties(player)
-            self.valuePlayersProperties(player)
+            # self.valuePlayersProperties(player)
 
-    def action(self, player, position):
+    def action(self, state, player):
         # Landed on a property - calculate rent first
-        if type(self.monopoly_board[position]) == Property:
+        if type(self.monopoly_board[player.position]) == Property:
             # calculate the rent one would have to pay (but not pay it yet)
-            rent = self.calculateRent(self.monopoly_board[position])
+            rent = self.calculateRent(self.monopoly_board[player.position])
             # pass action to to the cell
-            self.monopoly_board[position].action(player, self, rent)
+            self.monopoly_board[player.position].action(player, state, rent)
         # other cells
         else:
-            self.monopoly_board[position].action(player, self)
+            self.monopoly_board[player.position].action(player, state)
 
     ## check if there is a winner (one player alive)
-    def gameOver(self):
+    def gameOver(self, players):
         playersAlive = sum(1 for player in players if player.alive)
         return playersAlive <= 1
 
+class GameState:
+    def __init__(self):
+        pass
 
-def play(players, max_rounds):
-    a = Player("Alex", "cheapest", 500)
-    b = Player("Bop", "cheapest", 500)
-    c = Player("Alice", "cheapest", 500)
-    d = Player("Said", "cheapest", 500)
-
-    players = [a, b, c, d]
+    @staticmethod
+    def startState(game):
+        starting = GameState()
+        starting.game = game
+        starting.board = Board()
+        starting.board.setToDefault()
+        starting.players = game.players.copy()
+        for player in starting.players:
+            player.setToDefault()
+       
+        starting.round = 0
+        return starting
     
-    random.shuffle(players)
+    def newState(self):
+        newState = GameState()
+        newState.game = self.game
+        newState.board = self.board
+        newState.players = self.players
+        
+        return newState
+       
 
-    gameBoard = Board(players)
+class Game:
+    def __init__(self, players, max_rounds):
+        self.players = players
+        self.max_rounds = max_rounds
+        self.state = GameState.startState(self)
 
-    stop = True
-    rounds = 0
-    while stop and rounds <= max_rounds:
-        for player in players:
-            player.makeAMove(gameBoard)
-            print("")
-        if gameBoard.gameOver():
-            stop = False
-            for player in players:
-                if player.alive:
-                    print(f'Number of rounds is {rounds}')
-                    print(player.name + " is the winner.\n")
-                    return player.name
-        rounds += 1
-    return False
+    def play(self):
+        playing = True
+        while playing:
+            for player in self.players:
+                player.makeAMove(self.state)
+                print("")
+                if self.state.board.gameOver(self.players):
+                    playing = False
+                    for player in self.players:
+                        if player.alive:
+                            print(f'Number of rounds is {self.max_rounds}')
+                            print(player.name + " is the winner.\n")
+                    break
+            if self.max_rounds > 500:
+                print("number of rounds exceeded\n")
+                playing = False
+        self.max_rounds += 1
 
-def game(players, max_rounds, game_num):
-    ## there an issue with initializing players outside the function
+class Strategy:
+    def __init__(self, mv, rt, ct, cp, dp):
+        self.money_value = mv              # how the player value money
+        self.rent_return = rt              # positive rent return of property
+        self.cash_threshold = ct           # minimum cash the player should have
+        self.cash_penalty = cp             # negative applied if money lower than cash threshold
+        self.deadly_properties = dp        # negative value applied to the number of deadly spaces
+          
+    def heuristic(self, player, board):
+        value = player.money / settingStartingSalary * self.money_value #the value of money comparing to threshold
+        value += sum([board.calculateRent(prop) for prop in board.monopoly_board]) / settingStartingSalary * self.rent_return
+
+        value -= board.dangerousSpaces(player) * self.deadly_properties
+        if (player.money < self.cash_threshold):
+            value -= self.cash_penalty
+
+        return value
+
+
+
+
+def test_series(players, max_rounds, game_num):
     wins = {}
     game_played = 0
     while game_played < game_num:
-        winner = play(players, max_rounds)
+        random.shuffle(players)
+        game = Game( players, max_rounds )
+        winner = game.play()
         if winner == False:
             pass #continue
         else:
@@ -700,52 +761,59 @@ def game(players, max_rounds, game_num):
         game_played += 1
     
     return wins
-        
 
 
-a = Player("Alex", "cheapest", 500)
-b = Player("Bop", "cheapest", 500)
-c = Player("Alice", "cheapest", 500)
-d = Player("Said", "cheapest", 500)
+# money_value = mv              # how the player value money (0-1)
+# rent_return = rt              # positive rent return of property (0-1)
+# cash_threshold = ct           # minimum cash the player should have (money count)
+# cash_penalty = cp             # negative applied if money lower than cash threshold (0-1)
+# deadly_properties = dp        # negative value applied to the number of deadly spaces (0-1)
+    
+s1 = Strategy(1, 1, 500, 1, 1)
+
+a = Player("Alex", s1)
+b = Player("Bop", s1)
+c = Player("Alice", s1)
+d = Player("Said", s1)
 
 players = [a, b, c, d]
 # wins = game(players, 200, 10)
 # print(wins)
+print(test_series(players, 500, 10))
+# gameBoard = Board()
 
-gameBoard = Board(players)
+# stut = [0] * 40
 
-stut = [0] * 40
+# playing = True
+# rounds = 0
+# while playing:
+#     for player in players:
+#         player.makeAMove(gameBoard)
+#         print("")
+#         stut[player.position] += 1
+#         if gameBoard.gameOver(players):
+#             playing = False
+#             for player in players:
+#                 if player.alive:
+#                     print(f'Number of rounds is {rounds}')
+#                     print(player.name + " is the winner.\n")
+#             break
+#     if rounds > 500:
+#         print("number of rounds exceeded\n")
+#         playing = False
+#     rounds += 1
 
-playing = True
-rounds = 0
-while playing:
-    for player in players:
-        player.makeAMove(gameBoard)
-        print("")
-        stut[player.position] += 1
-        if gameBoard.gameOver():
-            playing = False
-            for player in players:
-                if player.alive:
-                    print(f'Number of rounds is {rounds}')
-                    print(player.name + " is the winner.\n")
-            break
-    if rounds > 500:
-        print("number of rounds exceeded\n")
-        playing = False
-    rounds += 1
+# for player in players:
+#     print(f'{player.name:6} have {player.money}')
+#     for build in player.toBuild:
+#         print(build.name)
 
-for player in players:
-    print(f'{player.name:6} have {player.money}')
-    for build in player.toBuild:
-        print(build.name)
-
-for x in gameBoard.monopoly_board:
-        if x.type == "property":
-            if x.owner != "":
-                print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner. Value {x.valueToOwner}')
-            else:
-                print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
+# for x in gameBoard.monopoly_board:
+#         if x.type == "property":
+#             if x.owner != "":
+#                 print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner.')
+#             else:
+#                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
 
 # print("\n")
 # s = sum(stut)
