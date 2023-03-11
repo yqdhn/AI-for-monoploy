@@ -16,17 +16,28 @@ class Player:
         self.roundsInJail = 0
         self.dicesDoubleCount = 0
         self.alive = True
+
+    def update(self, newSelf):
+        self.name = newSelf.name
+        self.position = newSelf.position
+        self.money = newSelf.money  # start 1500
+        self.strategy = newSelf.strategy
+        self.toBuild = newSelf.toBuild
+        self.inJail = newSelf.inJail
+        self.roundsInJail = newSelf.roundsInJail
+        self.dicesDoubleCount = newSelf.dicesDoubleCount
+        self.alive = newSelf.alive
         
     # money management
     # get paid
     def moneyIn(self, amount):
-        print(str(amount) + " added to " + self.name)
+        game_output(str(amount) + " added to " + self.name)
         self.money += amount
-        print(self.name + " money become " + str(self.money))
+        game_output(self.name + " money become " + str(self.money))
 
     # pay someone or buy
     def moneyOut(self, amount, state):
-        print(self.name + " money was " + str(self.money))
+        game_output(self.name + " money was " + str(self.money))
         money_taken = 0
         self.bankruptPlayer(amount, state)
         if self.money >= amount:
@@ -36,7 +47,7 @@ class Player:
             money_taken = self.money
             self.money -= money_taken
         
-        print("become " + str(self.money) + " paid " + str(money_taken))
+        game_output("become " + str(self.money) + " paid " + str(money_taken))
         return money_taken
 
     # positions
@@ -72,7 +83,7 @@ class Player:
                 playAgain = False
                 self.moveTo(10, state)
                 self.dicesDoubleCount = 0
-                print(f'{self.name} went to jail after 3 doubles')
+                game_output(f'{self.name} went to jail after 3 doubles')
                 return False
         else:
             self.dicesDoubleCount = 0
@@ -81,11 +92,11 @@ class Player:
             if dice1 != dice2:
                 self.roundsInJail += 1
                 if self.roundsInJail > 3:
-                    print(f'{self.name} get out of jail after 3 rounds')
+                    game_output(f'{self.name} get out of jail after 3 rounds')
                     pass
                 elif self.money >= 50:
                     jailFine = self.moneyOut(50, state)
-                    print(f'{self.name} pays {jailFine} to get out of jail')
+                    game_output(f'{self.name} pays {jailFine} to get out of jail')
                     self.roundsInJail = 0
                 else:
                     return False
@@ -98,7 +109,7 @@ class Player:
             return False
 
         # move the piece
-        print(f'{self.name} position is {self.position} and dices total is {dice1+dice2}')
+        game_output(f'{self.name} position is {self.position} and dices total is {dice1+dice2}')
         self.position += dice1+dice2
         # calculate correct cell (if more that 40)
         # and get salary for passing GO (200)
@@ -106,57 +117,51 @@ class Player:
             self.position = self.position - len(state.board.monopoly_board)
             self.moneyIn(200)
 
-        print(f'{self.name} new position is {state.board.monopoly_board[self.position].name}({self.position})')
+        game_output(f'{self.name} new position is {state.board.monopoly_board[self.position].name}({self.position})')
         state.board.action(state, self)
 
         if playAgain:
-            print(f'{self.name} plays again {dice1}={dice2}')
+            game_output(f'{self.name} plays again {dice1}={dice2}')
             self.makeAMove(state)
     
     # take an action if player doesn't have money
     def bankruptPlayer(self, amount, state):
         while self.money - amount < 0:
-            propertyToMortgage = None
-            for prop in state.board.monopoly_board:
-                if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
-                    if propertyToMortgage == None:
-                        propertyToMortgage = prop
-                    elif propertyToMortgage.valueToOwner > prop.valueToOwner:
-                        propertyToMortgage = prop
-
-            #there is no property To Mortgage
-            if propertyToMortgage == None:
+            # find all possible state of Mortgage
+            possibleStatesOfMortgage = [self.stateOfMortgage(state, prop) for prop in state.board.monopoly_board \
+             if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged]
+            
+            #there is no property to mortgage
+            if len(possibleStatesOfMortgage) == 0:
                 self.alive = False
                 state.board.sellAll(self) # return all properties to bank
-                print(f'{self.name} is out (no money) ############')
+                game_output(f'{self.name} is out (no money) ############')
                 return
-
-            ## sell houses
-            if propertyToMortgage.houses > 0:
-                self.moneyIn(int(propertyToMortgage.house_price/2))
-                propertyToMortgage.houses -= 1
-                print(f'{self.name} sold one house from {propertyToMortgage.name}')
-
-            else:
-                ## check the if the set have houses (can't mortgage property in a set that have houses)
-                houseSold = False
-                if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
-                    houseSold = False
-                    for prop in state.board.monopoly_board:
-                        if prop.type == "property" and prop.group == propertyToMortgage.group:
-                            if prop.houses > 0 and prop != propertyToMortgage:
-                                self.moneyIn(int(propertyToMortgage.house_price/2))
-                                prop.houses -= 1
-                                print(f'{self.name} sold one house from {propertyToMortgage.name} group')
-                                houseSold = True
-                                break
-                ## can't find houses in the set, mortgage the property
-                if not houseSold:
-                    propertyToMortgage.isMortgaged = True
-                    self.moneyIn(int(propertyToMortgage.price/2))
-                    print(f'{self.name} mortgage {propertyToMortgage.name}')
             
+            ## chose the best state
+            resultsOfMortgage = [self.strategy.heuristic(stateOfMortgage.players[state.players.index(self)],\
+                                                          stateOfMortgage) for stateOfMortgage in possibleStatesOfMortgage]
+            maxValueState = possibleStatesOfMortgage[resultsOfMortgage.index(max(resultsOfMortgage))]
+
+            ## update everything to the best state for player
+            self.update(maxValueState.players[state.players.index(self)])
+            state.updateState(maxValueState)
+            
+        
             state.board.recalculateChanges()
+
+    def stateOfMortgage(self, state, space):
+        newState = state.newState()
+        prop = newState.board.monopoly_board[state.board.monopoly_board.index(space)]
+        ## sell houses
+        if prop.houses > 0:
+            newState.players[state.players.index(self)].moneyIn(int(prop.price/2))
+            prop.houses -= 1
+        else:
+            prop.isMortgaged = True
+            newState.players[state.players.index(self)].moneyIn(int(prop.price/2))
+        
+        return newState
 
     def unMortgage(self, state):
         propertyToUnMortgage = None
@@ -170,7 +175,7 @@ class Player:
         if propertyToUnMortgage != None:
             propertyToUnMortgage.isMortgaged = False
             self.moneyOut(int(propertyToUnMortgage.price/2), state)
-            print(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
+            game_output(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
 
     # def tradeProperty(self, board):
 
@@ -184,22 +189,22 @@ class cell:
         if self.type == "Tax":
             if self.name == "Income Tax":
                 tax = player.moneyOut(100, state)
-                print(f'{player.name} pays {tax} {self.name}')
+                game_output(f'{player.name} pays {tax} {self.name}')
             elif self.name == "Super Tax":
                 tax = player.moneyOut(200, state)
-                print(f'{player.name} pays {tax} {self.name}')
+                game_output(f'{player.name} pays {tax} {self.name}')
         elif self.type == "cc":
-            print(f'draw a {self.name}')
+            game_output(f'draw a {self.name}')
             self.community(player, state)
         elif self.type == "chance":
-            print(f'draw a {self.name}')
+            game_output(f'draw a {self.name}')
             self.chance(player, state)
         elif self.type == "goJail":
-            print(f'{self.name}')
+            game_output(f'{self.name}')
             player.moveTo(10, state)
             player.inJail = True
         else:
-            print(f'You are in {self.name}')
+            game_output(f'You are in {self.name}')
 
     def community(self, player, state):
         
@@ -208,54 +213,54 @@ class cell:
 
         # auctions
         if card == 0:
-            print("Annuity matures collect 100")
+            game_output("Annuity matures collect 100")
             player.moneyIn(100)
         elif card == 1:
-            print("In come tax refund collect 50")
+            game_output("In come tax refund collect 50")
             player.moneyIn(50)
         elif card == 2:
-            print("From sale of stock you get 50")
+            game_output("From sale of stock you get 50")
             player.moneyIn(50)
         elif card == 3:
-            print("Advance to 'GO'. Collect 200")
+            game_output("Advance to 'GO'. Collect 200")
             player.moveTo(0, state)
             player.moneyIn(200)
         elif card == 4:
-            print("Bank error in your favor. Collect 200")
+            game_output("Bank error in your favor. Collect 200")
             player.moneyIn(200)
         elif card == 5:
-            print("Doctor's fees. Pay 50.")
+            game_output("Doctor's fees. Pay 50.")
             player.moneyOut(50, state)
         elif card == 6:
-            print("Go directly to jail.")
+            game_output("Go directly to jail.")
             player.moveTo(10, state)
             player.inJail = True
         elif card == 7:
-            print("Pay hospital 100.")
+            game_output("Pay hospital 100.")
             player.moneyOut(100, state)
         elif card == 8:
-            print("Go back to Old Kent road")
+            game_output("Go back to Old Kent road")
             player.moveTo(1, state)
         elif card == 9:
-            print("Receive interest on 7%' preference shares 50")
+            game_output("Receive interest on 7%' preference shares 50")
             player.moneyIn(50)
         elif card == 10:
-            print("It is your birthday collect 10 from each player")
+            game_output("It is your birthday collect 10 from each player")
             for p in state.players:
                 if p != player:
                     p.moneyOut(10, state)
                     player.moneyIn(10)
         elif card == 11:
-            print("pay your insurance premium 50")
+            game_output("pay your insurance premium 50")
             player.moneyOut(50, state)
         elif card == 12:
-            print("Get Inherit 100")
+            game_output("Get Inherit 100")
             player.moneyIn(100)
         elif card == 13:
-            print("you won a prize. Collect 10")
+            game_output("you won a prize. Collect 10")
             player.moneyIn(10)
         else:
-            print("something wrong with community")
+            game_output("something wrong with community")
 
         state.board.communityCards.append(card)
     
@@ -266,21 +271,21 @@ class cell:
 
         # auctions
         if card == 0:
-            print("Take a trip to Marylebone Station. Get 200 if you pass go")
+            game_output("Take a trip to Marylebone Station. Get 200 if you pass go")
             if player.position > 15:
                 player.moneyIn(200)
             player.moveTo(15, state)
         elif card == 1:
-            print("Advance to Pall Mall. Get 200 if you pass go")
+            game_output("Advance to Pall Mall. Get 200 if you pass go")
             if player.position > 11:
                 player.moneyIn(200)
             player.moveTo(11, state)
         elif card == card == 2:
-            print("Go directly to jail.")
+            game_output("Go directly to jail.")
             player.moveTo(10, state)
             player.inJail = True
         elif card == 3:
-            print("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
+            game_output("Make general repairs on all your property. For each house pay 25. For each hotel pay 100")
             houses = 0
             hotels = 0
             for prop in state.board.monopoly_board:
@@ -291,7 +296,7 @@ class cell:
                         hotels += 1
             player.moneyOut(25*houses+100*hotels, state)
         elif card == 4:
-            print("You are assessed for street repair. 40 per house. 115 per hotel")
+            game_output("You are assessed for street repair. 40 per house. 115 per hotel")
             houses = 0
             hotels = 0
             for prop in state.board.monopoly_board:
@@ -302,40 +307,40 @@ class cell:
                         hotels += 1
             player.moneyOut(40*houses+115*hotels, state)
         elif card == 5:
-            print("Speeding fine 50.")
+            game_output("Speeding fine 50.")
             player.moneyOut(50, state)
         elif card == 6:
-            print("Advance to Mayfair")
+            game_output("Advance to Mayfair")
             player.moveTo(39, state)
         elif card == 7:
-            print("Your building loan matures receive 150")
+            game_output("Your building loan matures receive 150")
             player.moneyIn(150)
         elif card == 8:
-            print("Pay school fees 150")
+            game_output("Pay school fees 150")
             player.moneyOut(150, state)
         elif card == 9:
-            print("You won a prize. Collect 100")
+            game_output("You won a prize. Collect 100")
             player.moneyIn(100)
         elif card == 10:
-            print("Go back three spaces")
+            game_output("Go back three spaces")
             player.moveTo(player.position - 3, state)
         elif card == 11:
-            print("Advance to 'GO'. Collect 200")
+            game_output("Advance to 'GO'. Collect 200")
             player.moveTo(0, state)
             player.moneyIn(200)
         elif card == 12:
-            print("Bank pays you dividend 50")
+            game_output("Bank pays you dividend 50")
             player.moneyIn(50)
         elif card == 13:
-            print("'Drunk in charge'. fine 50")
+            game_output("'Drunk in charge'. fine 50")
             player.moneyOut(50, state)
         elif card == 14:
-            print("Advance to Trafalgar. Get 200 if you pass go")
+            game_output("Advance to Trafalgar. Get 200 if you pass go")
             if player.position > 24:
                 player.moneyIn(200)
             player.moveTo(24, state)
         else:
-            print("something wrong with community")
+            game_output("something wrong with community")
 
         state.board.chanceCards.append(card)
 
@@ -358,7 +363,7 @@ class Property:
     def action(self, player, state, rent=None):
         # owned
         if self.owner == player:
-            print(player.name + " is the owner of " + self.name)
+            game_output(player.name + " is the owner of " + self.name)
             return
 
         # for sale
@@ -366,18 +371,18 @@ class Property:
             if player.money >= self.price:
                 player.moneyOut(self.price, state)
                 self.owner = player
-                print(player.name + " buy " + self.name)
+                game_output(player.name + " buy " + self.name)
             else:
-                print(player.name + " can't buy " + self.name)
+                game_output(player.name + " can't buy " + self.name)
 
         # pay rent
         else:
             if self.isMortgaged:
-                print(f'{self.name} is mortgaged, no rent for {self.owner.name}')
+                game_output(f'{self.name} is mortgaged, no rent for {self.owner.name}')
             else:
                 money_taken = player.moneyOut(rent, state)
                 self.owner.moneyIn(money_taken)
-                print(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
+                game_output(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
 
 
 class Board:
@@ -389,7 +394,7 @@ class Board:
             cell("Community Chest", "cc"),
             Property("Whitechapel Road",    "property",   60,    (4, 20, 60, 180, 320, 450),     50,  "brown"),
             cell("Income Tax", "Tax"), # 100
-            Property("King’s Cross Station","station",    200,   (0, 25, 50, 100, 200),           0,  "station"),
+            Property("King Cross Station","station",    200,   (0, 25, 50, 100, 200),           0,  "station"),
             Property("The Angel Islington", "property",   100,   (6, 30, 90, 270, 400, 550),     50,  "blue"),
             cell("Chance", "chance"), 
             Property("Euston Road",        "property",    100,   (6, 30, 90, 270, 400, 550),     50,  "blue"),
@@ -461,7 +466,7 @@ class Board:
 
     ## return the rent amount of stations
     def calculateRent(self, property):
-        if type(property) == Property:
+        if type(property) == Property and not property.isMortgaged:
             ## normal property rent (count houses if there some)
             if property.type == "property":
                 if property.houses == 0 and property.isFullSet:
@@ -488,7 +493,7 @@ class Board:
     def totalRent(self, player):
         rent = 0
         for prop in self.monopoly_board:
-            if type(prop) == Property and prop.owner == player:
+            if prop.type in ["property","station"] and prop.owner == player and not prop.isMortgaged:
                 rent += self.calculateRent(prop)
         return rent
 
@@ -501,10 +506,10 @@ class Board:
         for prop in self.monopoly_board:
             if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
                 toBuildLits.append(prop)
-                # print(prop.name + " added")
+                # game_output(prop.name + " added")
 
         for i in toBuildLits:
-            print(i.name)
+            game_output(i.name)
 
         # three techniques to build houses
         # if player.buildTechnique == "random":
@@ -525,7 +530,7 @@ class Board:
         for prop in self.monopoly_board:
             if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
                 player.toBuild.append(prop)
-                # print(prop.name + " added")
+                # game_output(prop.name + " added")
         
         # return nothing if there are nothing to build 
         if player.toBuild == []:
@@ -568,7 +573,7 @@ class Board:
         else:
             buildMe.houses += 1
             player.moneyOut(buildMe.house_price, self)
-            print(f'Build {buildMe.name}')
+            game_output(f'Build {buildMe.name}')
             return True
     
     ## return all properties to the game (if player lost)
@@ -640,22 +645,25 @@ class GameState:
         starting = GameState()
         starting.game = game
         starting.board = Board()
-        # starting.board.setToDefault()
         starting.players = copy.deepcopy(players)
-        # for player in starting.players:
-        #     player.setToDefault()
-       
         starting.round = 0
+
         return starting
     
     def newState(self):
         newState = GameState()
-        newState.game = self.game
-        newState.board = self.board
-        newState.players = self.players
+        newState.game = copy.deepcopy(self.game)
+        newState.board = copy.deepcopy(self.board)
+        newState.players = copy.deepcopy(self.players)
+        newState.round = copy.deepcopy(self.round)
         
         return newState
        
+    def updateState(self, newState):
+        self.game = newState.game
+        self.board = newState.board
+        self.players = newState.players
+        self.round = newState.round
 
 class Game:
     def __init__(self, players, max_rounds):
@@ -663,51 +671,40 @@ class Game:
         self.state = GameState.startState(self, players)
 
     def play(self):
+        global GAME_OUTPUT
         playing = True
-        winner = None
         while playing:
             for player in self.state.players:
                 player.strategy.heuristic(player, self.state)
                 player.makeAMove(self.state)
-                print("")
+                game_output("")
                 if self.state.board.gameOver(self.state.players):
                     playing = False
+                    GAME_OUTPUT = True
                     for player in self.state.players:
                         if player.alive:
-                            print(f'Number of rounds is {self.max_rounds}')
-                            print(player.name + " is the winner.\n")
-                            winner = player.name
+                            game_output(f'Number of rounds is {self.state.round}')
+                            game_output(player.name + " is the winner.\n")
+                            return player.name
                     break
             if self.state.round > self.max_rounds:
-                print("number of rounds exceeded\n")
                 playing = False
+                GAME_OUTPUT = True
+                game_output("number of rounds exceeded\n")
             self.state.round += 1
 
-        for player in self.state.players:
-            print(f'{player.name:6} have {player.money}')
-        for build in player.toBuild:
-            print(build.name)
-
-        for x in self.state.board.monopoly_board:
-            if x.type == "property":
-                if x.owner != "":
-                    print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner.')
-                else:
-                    print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
-
 class Strategy:
-    def __init__(self, mv, rm, rr, ct, cp, dp):
+    def __init__(self, mv, rr, ct, cp, dp):
         self.money_value = mv              # how the player value money
-        self.rent_ratio = rm               # positive rent ratio of property (rent/price) (%)
         self.rent_return = rr              # total paid comparing the the rent return
         self.cash_threshold = ct           # minimum cash the player should have
         self.cash_penalty = cp             # negative applied if money lower than cash threshold
         self.deadly_properties = dp        # negative value applied to the number of deadly spaces
           
     def heuristic(self, player, state):
-        value =  player.money / settingStartingSalary * self.money_value #the value of money comparing to threshold
-        value += state.board.totalRent(player) / settingStartingSalary * self.rent_ratio
-        value += state.board.rentReturn(player) * self.rent_return
+        value =  player.money * self.money_value #the value of money comparing to threshold
+        value += state.board.totalRent(player) * self.rent_return
+        # value += state.board.rentReturn(player) * self.rent_return
 
         value -= state.board.dangerousProperties(player) * self.deadly_properties
         if (player.money < self.cash_threshold):
@@ -716,10 +713,13 @@ class Strategy:
         return value
 
 
-def test_series(players, max_rounds, game_num):
+def test_series(players, max_rounds, game_num, output):
+    global GAME_OUTPUT
     wins = {}
     game_played = 0
     while game_played < game_num:
+        game_output("\nnew  game\n")
+        GAME_OUTPUT = output
         random.shuffle(players)
         game = Game( players, max_rounds )
         winner = game.play()
@@ -732,7 +732,22 @@ def test_series(players, max_rounds, game_num):
 
         game_played += 1
 
+        for player in game.state.players:
+            game_output(f'{player.name:6} have {player.money}')
+
+        for x in game.state.board.monopoly_board:
+            if x.type == "property":
+                if x.owner != "":
+                    game_output(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner.')
+                else:
+                    game_output(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
     return wins
+
+global GAME_OUTPUT
+GAME_OUTPUT = True
+def game_output(*args, end="\n"):
+    if GAME_OUTPUT:
+       print(*args, end=end)
 
 
 # self.money_value = mv              # how the player value money
@@ -742,23 +757,32 @@ def test_series(players, max_rounds, game_num):
 # self.cash_penalty = cp             # negative applied if money lower than cash threshold
 # self.deadly_properties = dp        # negative value applied to the number of deadly spaces
     
-s1 = Strategy(1, 10, 1, 500, 1, 1)
+s1 = Strategy(0.5, 1, 500, 0, 1)
+s2 = Strategy(0.1, 5, 500, 0, 1)
 
 a = Player("Alex", s1)
-b = Player("Bop", s1)
+b = Player("Bop", s2)
 c = Player("Alice", s1)
 d = Player("Said", s1)
 
 players = [a, b, c, d]
-print(test_series(players, 500, 5))
+print(test_series(players, 500, 5, output=True))
 
 
 # players = [a]
 # game = Game( players, 500 )
-# i=0
+
 # for x in game.state.board.monopoly_board:
 #     if type(x) == Property:
-#         x.owner = a
-#         a.money -= x.price
-#         print(a.strategy.heuristic(a,game.state))
+#         a.moveTo(game.state.board.monopoly_board.index(x), game.state)
+#         print(f'{x.name:25}: {round(a.strategy.heuristic(a,game.state),4):6} m:{a.money}')
+
+# print()
+# players = [b]
+# game = Game( players, 500 )
+# for x in game.state.board.monopoly_board:
+#     if type(x) == Property:
+#         b.moveTo(game.state.board.monopoly_board.index(x), game.state)
+#         print(f'{x.name:25}: {round(b.strategy.heuristic(b,game.state),4):6} m:{b.money}')
     
+

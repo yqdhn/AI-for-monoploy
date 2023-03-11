@@ -48,4 +48,21 @@
             if prop.type == "property" and prop.owner == player:
                 prop.valueToOwner = self.propertyEvaluation(player, prop)
             elif prop.type in ["util", "station"]:
-                prop.valueToOwner == 1
+                prop.valueToOwner == 1.
+
+
+
+
+    ## check the if the set have houses (can't mortgage property in a set that have houses)
+    houseSold = False
+    if propertyToMortgage.type == "property" and propertyToMortgage.isFullSet:
+        houseSold = False
+        for prop in state.board.monopoly_board:
+            if prop.type == "property" and prop.group == propertyToMortgage.group:
+                if prop.houses > 0 and prop != propertyToMortgage:
+                    self.moneyIn(int(propertyToMortgage.house_price/2))
+                    prop.houses -= 1
+                    game_output(f'{self.name} sold one house from {propertyToMortgage.name} group')
+                    houseSold = True
+                    break
+    ## can't find houses in the set, mortgage the property
