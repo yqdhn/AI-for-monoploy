@@ -1,5 +1,6 @@
 import math
 import random
+import copy
 
 global stut
 settingStartingSalary = 1500
@@ -392,12 +393,12 @@ class Board:
     def __init__(self):
         self.monopoly_board = [
             cell("Go", "go"),
-                     #    name              type         price     rent price             house price   group
+                    #    name              type         price     rent price             house price   group
             Property("Old Kent Road",       "property",   60,    (2, 10, 30,  90, 160, 250),     50,  "brown"),
             cell("Community Chest", "cc"),
             Property("Whitechapel Road",    "property",   60,    (4, 20, 60, 180, 320, 450),     50,  "brown"),
             cell("Income Tax", "Tax"), # 100
-            Property("King’s Cross Station","station",    200,   (0,25,50,100,200),              0,   "station"),
+            Property("King’s Cross Station","station",    200,   (0, 25, 50, 100, 200),           0,  "station"),
             Property("The Angel Islington", "property",   100,   (6, 30, 90, 270, 400, 550),     50,  "blue"),
             cell("Chance", "chance"), 
             Property("Euston Road",        "property",    100,   (6, 30, 90, 270, 400, 550),     50,  "blue"),
@@ -407,7 +408,7 @@ class Board:
             Property("Electric Company",   "util"    ,    150,   (0,0,0,0,0),                    0,   "util"),
             Property("Whitehall",          "property",    140,   (10, 50, 150, 450, 625, 750),   100, "pink"),
             Property("Northumberland Avenue","property",  140,   (12, 60, 180, 500, 700, 900),   100, "pink"),
-            Property("Marylebone Station", "station",     200,   (0,25,50,100,200),              0,   "station"),
+            Property("Marylebone Station", "station",     200,   (0, 25, 50, 100, 200),           0,  "station"),
             Property("Bow Street",         "property",    180,   (14, 70, 200, 550, 700, 950),   100, "orange"),
             cell("Community Chest", "cc"),
             Property("Marlborough Street", "property",    180,   (14, 70, 200, 550, 700, 950),   100, "orange"),
@@ -417,7 +418,7 @@ class Board:
             cell("Chance", "chance"),
             Property("Fleet Street",       "property",    220,   (18, 90, 250, 700, 875, 1050),  150, "red"),
             Property("Trafalgar Square",       "property",240,   (18, 100, 300, 750, 925, 1100), 150, "red"),
-            Property("Fenchurch Street Station","station",200,   (0,25,50,100,200),              0,   "station"),
+            Property("Fenchurch Street Station","station",200,   (0, 25, 50, 100, 200),            0, "station"),
             Property("Leicester Square",   "property",    260,   (22, 110, 330, 800, 975, 1150), 150, "yellow"),
             Property("Coventry Street",    "property",    260,   (22, 110, 330, 800, 975, 1150), 150, "yellow"),
             Property("Water Works",        "util"    ,    150,   (0,0,0,0,0),                    0,   "util"),
@@ -427,7 +428,7 @@ class Board:
             Property("Oxford Street",      "property",    300,   (26,130, 390, 900, 1100, 1275), 200, "green"),
             cell("Community Chest", "cc"),
             Property("Bond Street",      "property",      320,   (28,150, 450, 100, 1200, 1400), 200, "green"),
-            Property("Liverpool Street Station","station",200,   (0,25,50,100,200),              0,   "station"),
+            Property("Liverpool Street Station","station",200,   (0, 25, 50, 100, 200),            0, "station"),
             cell("Chance", "chance"),
             Property("Park Lane",         "property",     350,   (35, 175, 500, 1100, 1300, 1500), 200,"dark blue"),
             cell("Super Tax", "Tax"), #200
@@ -467,7 +468,7 @@ class Board:
                 else:
                     prop.isFullSet = False
 
-    ## 
+    ## return the number of stations
     def calculateStations(self, station):
         stationsCount = 0
         for prop in self.monopoly_board:
@@ -475,7 +476,7 @@ class Board:
                 stationsCount += 1
         return stationsCount
 
-
+    ## return the rent amount of stations
     def calculateRent(self, property):
         if type(property) == Property:
             ## normal property rent (count houses if there some)
@@ -497,9 +498,16 @@ class Board:
                 return property.rent_price[self.calculateStations(property)]
 
             else:
-                return "something wrong with rent"
+                return "something went wrong with rent"
         else:
             return 0
+        
+    def totalRent(self, player):
+        rent = 0
+        for prop in self.monopoly_board:
+            if type(prop) == Property and prop.owner == player:
+                rent += self.calculateRent(prop)
+        return rent
 
     ## check if there a full set with a player
     # store all properties the player can build in player.toBuild list
@@ -512,10 +520,10 @@ class Board:
                 toBuildLits.append(prop)
                 # print(prop.name + " added")
 
-        # for i in toBuildLits:
-        #     print(i.name)
+        for i in toBuildLits:
+            print(i.name)
 
-        # # three techniques to build houses
+        # three techniques to build houses
         # if player.buildTechnique == "random":
         #     random.shuffle(toBuildLits)
         # elif player.buildTechnique == "cheapest":
@@ -530,34 +538,39 @@ class Board:
     # this help to find a property to build (already sorted according the build technique)
     # check if the player can build (how much they can pay)
     def whatToBuild(self, player, maxMoneyToBuild):
-        self.toBuild(player)
-        # first check the number of houses in the first set (in toBuild)
+        # list properties that player can build
+        for prop in self.monopoly_board:
+            if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
+                player.toBuild.append(prop)
+                # print(prop.name + " added")
+        
+        # return nothing if there are nothing to build 
         if player.toBuild == []:
             return False
         
-        # build = None
-        # for i, prop in enumerate(player.toBuild):
-        #     if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
-        #         build = player.toBuild[i]
-        #         buildGroup = build.group
-        #         break
-        # if build == None:
-        #     return False
+        build = None
+        for i, prop in enumerate(player.toBuild):
+            if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
+                build = player.toBuild[i]
+                buildGroup = build.group
+                break
+        if build == None:
+            return False
 
-        # numberOfHousesInSet = 0
-        # numberOfProperties = 0
-        # for prop in player.toBuild:
-        #     if prop.group == buildGroup:
-        #         numberOfHousesInSet += prop.houses
-        #         numberOfProperties += 1
+        numberOfHousesInSet = 0
+        numberOfProperties = 0
+        for prop in player.toBuild:
+            if prop.group == buildGroup:
+                numberOfHousesInSet += prop.houses
+                numberOfProperties += 1
         
-        # # check max build in the properties in a set
-        # # that ensure we build all properties evenly (max 1 house difference)
-        # average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
+        # check max build in the properties in a set
+        # that ensure we build all properties evenly (max 1 house difference)
+        average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
         
-        # for prop in player.toBuild:
-        #     if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
-        #         return prop
+        for prop in player.toBuild:
+            if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
+                return prop
         return False
 
     # this function do build in properties
@@ -584,71 +597,33 @@ class Board:
                 prop.isMortgaged = False
                 prop.isFullSet = False
 
-    ## check how valuable the property of some player
-    def propertyShareInGroup(self, group, player):
-        propertiesCount = 0
-        ownedProperties = 0
+
+    # rent return comparing to cost
+    def rentReturn(self, player):
+        cost = 0
+        rent = 0
         for prop in self.monopoly_board:
-            if prop.type == "property" and prop.group == group:
-                propertiesCount += 1
-                if prop.owner == player:
-                    ownedProperties += 1
-        return ownedProperties / propertiesCount
-    
-    # def rentReturn(self, property):
-    #     theReturn = []
-    #     for i, rent in enumerate(property.rent_price):
-    #         theReturn.append(rent / (property.house_price*i + property.price))
-    #     return theReturn
-    
-    # check ability to build
-    # return average number of houses can build according to money have
-    # def financialStatus(self, player, property):
-    #     numberOfHousesCanBuild = (player.money - player.cashLimit) / property.house_price
-    #     average =  min(numberOfHousesCanBuild / (2 if  property.group in ["dark blue", "brown"] else 3), 5)
-    #     return average
+            if prop.type == "property" and prop.owner == player:
+                cost += prop.price + prop.house_price * prop.houses
+                rent += self.calculateRent(prop)
+            elif prop.type == "station" and prop.owner == player:
+                cost += prop.price
+                rent += self.calculateRent(prop)
+        if cost > 0:
+            return rent / cost
+        else:
+            return 0
 
-
-    # def propertyEvaluation(self, player, property):
-    #     share = self.propertyShareInGroup(property.group, player) * 10 # just scaling (to be out of 10)
-    #     rentReturn = property.rent_price[0] / property.price
-    #     probabilityOfLanding = 0 ########### to do next
-    #     rentAmount = self.calculateRent(property) / 2000 * 10
-
-    # 	# check rent return according to the financial status
-    #     # financial = self.financialStatus(player, property)
-    #     # idx = int(financial)
-    #     # rentFinancial = 0
-    #     # if financial < 5:
-    #     #     rentFinancial = (rentReturn[idx] * (idx + 1 - financial)) + (rentReturn[idx + 1] * (financial - idx))
-    #     # else:
-    #     #     rentFinancial = rentReturn[idx]
-    #     # rentFinancial = rentFinancial * 10/1.622 # just scaling (to be out of 10)
-
-    #     value = round(share  + probabilityOfLanding + rentAmount, 3)
-    #     return value
-
-    # def wantedProperties(self, player):
-    #     for prop in self.monopoly_board:
-    #         if prop.type == "property" and prop.owner != player and prop.owner != "" and prop.houses == 0:
-    #             player.wanted[prop] = self.propertyEvaluation(player, prop)
-
-
-    # The value of all properties the player own (add in the board)
-    # def valuePlayersProperties(self, player):
-    #     for prop in self.monopoly_board:
-    #         if prop.type == "property" and prop.owner == player:
-    #             prop.valueToOwner = self.propertyEvaluation(player, prop)
-    #         elif prop.type in ["util", "station"]:
-    #             prop.valueToOwner == 1
-    
     # calculate the number of deadly properties
-    def dangerousSpaces(self, player):
+    def dangerousProperties(self, player):
         deadly = 0
+        PropCount = 0
         for prop in self.monopoly_board:
-            if prop.type in ["property", "station"] and prop.owner != player and self.calculateRent(prop) > self.money:
-                deadly += 1
-        return deadly / len(self.monopoly_board)
+            if prop.type in ["property"]:
+                if prop.owner != player and self.calculateRent(prop) > player.money:
+                    deadly += 1
+                PropCount += 1
+        return deadly / PropCount
 
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
@@ -662,7 +637,7 @@ class Board:
         if type(self.monopoly_board[player.position]) == Property:
             # calculate the rent one would have to pay (but not pay it yet)
             rent = self.calculateRent(self.monopoly_board[player.position])
-            # pass action to to the cell
+            # pass action to to the property
             self.monopoly_board[player.position].action(player, state, rent)
         # other cells
         else:
@@ -678,14 +653,14 @@ class GameState:
         pass
 
     @staticmethod
-    def startState(game):
+    def startState(game, players):
         starting = GameState()
         starting.game = game
         starting.board = Board()
-        starting.board.setToDefault()
-        starting.players = game.players.copy()
-        for player in starting.players:
-            player.setToDefault()
+        # starting.board.setToDefault()
+        starting.players = copy.deepcopy(players)
+        # for player in starting.players:
+        #     player.setToDefault()
        
         starting.round = 0
         return starting
@@ -701,47 +676,61 @@ class GameState:
 
 class Game:
     def __init__(self, players, max_rounds):
-        self.players = players
         self.max_rounds = max_rounds
-        self.state = GameState.startState(self)
+        self.state = GameState.startState(self, players)
 
     def play(self):
         playing = True
+        winner = None
         while playing:
-            for player in self.players:
+            for player in self.state.players:
+                player.strategy.heuristic(player, self.state)
                 player.makeAMove(self.state)
                 print("")
-                if self.state.board.gameOver(self.players):
+                if self.state.board.gameOver(self.state.players):
                     playing = False
-                    for player in self.players:
+                    for player in self.state.players:
                         if player.alive:
                             print(f'Number of rounds is {self.max_rounds}')
                             print(player.name + " is the winner.\n")
+                            winner = player.name
                     break
-            if self.max_rounds > 500:
+            if self.state.round > self.max_rounds:
                 print("number of rounds exceeded\n")
                 playing = False
-        self.max_rounds += 1
+            self.state.round += 1
+
+        for player in self.state.players:
+            print(f'{player.name:6} have {player.money}')
+        for build in player.toBuild:
+            print(build.name)
+
+        for x in self.state.board.monopoly_board:
+            if x.type == "property":
+                if x.owner != "":
+                    print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner.')
+                else:
+                    print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
 
 class Strategy:
-    def __init__(self, mv, rt, ct, cp, dp):
+    def __init__(self, mv, rm, rr, ct, cp, dp):
         self.money_value = mv              # how the player value money
-        self.rent_return = rt              # positive rent return of property
+        self.rent_ratio = rm               # positive rent ratio of property (rent/price) (%)
+        self.rent_return = rr              # total paid comparing the the rent return
         self.cash_threshold = ct           # minimum cash the player should have
         self.cash_penalty = cp             # negative applied if money lower than cash threshold
         self.deadly_properties = dp        # negative value applied to the number of deadly spaces
           
-    def heuristic(self, player, board):
-        value = player.money / settingStartingSalary * self.money_value #the value of money comparing to threshold
-        value += sum([board.calculateRent(prop) for prop in board.monopoly_board]) / settingStartingSalary * self.rent_return
+    def heuristic(self, player, state):
+        value =  player.money / settingStartingSalary * self.money_value #the value of money comparing to threshold
+        value += state.board.totalRent(player) / settingStartingSalary * self.rent_ratio
+        value += state.board.rentReturn(player) * self.rent_return
 
-        value -= board.dangerousSpaces(player) * self.deadly_properties
+        value -= state.board.dangerousProperties(player) * self.deadly_properties
         if (player.money < self.cash_threshold):
             value -= self.cash_penalty
 
         return value
-
-
 
 
 def test_series(players, max_rounds, game_num):
@@ -759,17 +748,18 @@ def test_series(players, max_rounds, game_num):
             wins[winner] = wins.get(winner) + 1
 
         game_played += 1
-    
+
     return wins
 
 
-# money_value = mv              # how the player value money (0-1)
-# rent_return = rt              # positive rent return of property (0-1)
-# cash_threshold = ct           # minimum cash the player should have (money count)
-# cash_penalty = cp             # negative applied if money lower than cash threshold (0-1)
-# deadly_properties = dp        # negative value applied to the number of deadly spaces (0-1)
+# self.money_value = mv              # how the player value money
+# self.rent_multi = rm               # positive rent return multiplier of property
+# self.rent_return = rr              # total paid comparing the the rent return
+# self.cash_threshold = ct           # minimum cash the player should have
+# self.cash_penalty = cp             # negative applied if money lower than cash threshold
+# self.deadly_properties = dp        # negative value applied to the number of deadly spaces
     
-s1 = Strategy(1, 1, 500, 1, 1)
+s1 = Strategy(1, 10, 1, 500, 1, 1)
 
 a = Player("Alex", s1)
 b = Player("Bop", s1)
@@ -777,110 +767,15 @@ c = Player("Alice", s1)
 d = Player("Said", s1)
 
 players = [a, b, c, d]
-# wins = game(players, 200, 10)
-# print(wins)
-print(test_series(players, 500, 10))
-# gameBoard = Board()
-
-# stut = [0] * 40
-
-# playing = True
-# rounds = 0
-# while playing:
-#     for player in players:
-#         player.makeAMove(gameBoard)
-#         print("")
-#         stut[player.position] += 1
-#         if gameBoard.gameOver(players):
-#             playing = False
-#             for player in players:
-#                 if player.alive:
-#                     print(f'Number of rounds is {rounds}')
-#                     print(player.name + " is the winner.\n")
-#             break
-#     if rounds > 500:
-#         print("number of rounds exceeded\n")
-#         playing = False
-#     rounds += 1
-
-# for player in players:
-#     print(f'{player.name:6} have {player.money}')
-#     for build in player.toBuild:
-#         print(build.name)
-
-# for x in gameBoard.monopoly_board:
-#         if x.type == "property":
-#             if x.owner != "":
-#                 print(f'{x.name:21}: {x.houses} and {x.owner.name:6} is the owner.')
-#             else:
-#                 print(f'{x.name:21}: {x.houses} and {x.owner:6} is the owner.')
-
-# print("\n")
-# s = sum(stut)
-# m = max(stut)
-# for x in gameBoard.monopoly_board:
-#     print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)]/m*10,4)}')
-# print("\n")
-# for x in gameBoard.monopoly_board:
-#     print(f'{x.name:21}: {round(stut[gameBoard.monopoly_board.index(x)])}')
+print(test_series(players, 500, 5))
 
 
-# y = 1
-# for x in gameBoard.monopoly_board:
-#     if x.type == "property":
-#         if y==1:
-#             x.owner = a
-#             y=0
-#         else:
-#             x.owner = b
-#             y=1
-
-# a.money = 700
-# gameBoard.recalculateChanges()
-# for x in gameBoard.monopoly_board:
-#         if x.type == "property" and x.owner == a:
-#             print(f'{x.name:17} {x.valueToOwner}')
-# print("\n")
-# b.wanted = {k: v for k, v in sorted(b.wanted.items(), key=lambda item: -item[1])}
-
-# for prop in a.wanted:
-#     print(f'{prop.name:17}: {a.wanted[prop]}')
-
-
-
-
-
-# for x in gameBoard.monopoly_board:
+# players = [a]
+# game = Game( players, 500 )
+# i=0
+# for x in game.state.board.monopoly_board:
 #     if type(x) == Property:
-#         if x.group == "pink" or x.group == "green" or x.group == "red":
-#             x.owner = a
-
-# gameBoard.recalculateChanges()
-# # print(gameBoard.calculateRent(1))
-# # gameBoard.toBuild(a)
-# a.money = 1000000
-# print(a.toBuild)
-# for x in range(500):
-#     gameBoard.build(a, a.money)
-
-# for x in gameBoard.monopoly_board:
-#     if type(x) == Property:
-#         if x.group == "pink" or x.group == "green" or x.group == "red":
-#             print(x.name + ": " + str(x.houses))
-
-
-
-
-# for i in gameBoard.monopoly_board:
-#     if type(i) == Property:
-#         print(i.isFullSet)
-
-# for x in gameBoard.monopoly_board[:30]:
-#     if type(x) == Property:
-#         if x.type == "station":
-#             x.owner = a
-
-# print(gameBoard.calculateRent(5))
-
-
-# next add function to trade and to downgrade
+#         x.owner = a
+#         a.money -= x.price
+#         print(a.strategy.heuristic(a,game.state))
+    
