@@ -16,15 +16,6 @@ class Player:
         self.roundsInJail = 0
         self.dicesDoubleCount = 0
         self.alive = True
-
-    def setToDefault(self):
-        self.position = 0
-        self.money = settingStartingSalary  # start 1500
-        self.toBuild = []
-        self.inJail = False
-        self.roundsInJail = 0
-        self.dicesDoubleCount = 0
-        self.alive = True
         
     # money management
     # get paid
@@ -441,14 +432,6 @@ class Board:
         # Chance
         self.chanceCards = list(range(0, 15))
         random.shuffle(self.chanceCards)
-
-    def setToDefault(self):
-        for prop in self.monopoly_board:
-            if type(prop) == Property:
-                self.isFullSet = False
-                self.isMortgaged = False
-                self.houses = 0
-                self.owner = ""
 
     ## used to check if property sets, utils, or stations owned by the same player
     # it update 'isFullSet' for each
