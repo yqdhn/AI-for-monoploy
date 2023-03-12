@@ -17,7 +17,7 @@ class Player:
         self.dicesDoubleCount = 0
         self.alive = True
 
-    def update(self, newSelf):
+    def updatePlayer(self, newSelf):
         self.name = newSelf.name
         self.position = newSelf.position
         self.money = newSelf.money  # start 1500
@@ -127,6 +127,11 @@ class Player:
     # take an action if player doesn't have money
     def bankruptPlayer(self, amount, state):
         while self.money - amount < 0:
+            ###################################################################
+            ###################################################################
+            ################## fix memory address issue #######################
+            ###################################################################
+            ###################################################################
             # find all possible state of Mortgage
             possibleStatesOfMortgage = [self.stateOfMortgage(state, prop) for prop in state.board.monopoly_board \
              if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged]
@@ -141,13 +146,27 @@ class Player:
             ## chose the best state
             resultsOfMortgage = [self.strategy.heuristic(stateOfMortgage.players[state.players.index(self)],\
                                                           stateOfMortgage) for stateOfMortgage in possibleStatesOfMortgage]
-            maxValueState = possibleStatesOfMortgage[resultsOfMortgage.index(max(resultsOfMortgage))]
+            maxValueState = resultsOfMortgage.index(max(resultsOfMortgage))
 
             ## update everything to the best state for player
-            self.update(maxValueState.players[state.players.index(self)])
-            state.updateState(maxValueState)
-            
-        
+            # self.updatePlayer(maxValueState.players[state.players.index(self)])
+            # state.updateState(maxValueState)
+            # state.board.updateBoard(maxValueState.board)
+            x = 0
+            for prop in state.board.monopoly_board:
+                if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
+                    if x == maxValueState:
+                        if prop.houses > 0:
+                            self.moneyIn(int(prop.price/2))
+                            prop.houses -= 1
+                            game_output(f'{self.name} sold house from {prop.name}')
+                        else:
+                            prop.isMortgaged = True
+                            self.moneyIn(int(prop.price/2))
+                            game_output(f'{self.name} Mortgage {prop.name}')
+                        break
+                    x += 1
+
             state.board.recalculateChanges()
 
     def stateOfMortgage(self, state, space):
@@ -164,18 +183,36 @@ class Player:
         return newState
 
     def unMortgage(self, state):
-        propertyToUnMortgage = None
+        # find all possible state of UnMortgage
+        possibleStatesOfUnMortgage = [self.stateOfUnMortgage(state, prop) for prop in state.board.monopoly_board\
+                                        if prop.type in ["property", "util", "station"] and prop.owner == self\
+                                            and prop.isMortgaged and prop.price/2 <= self.money]
+        if len(possibleStatesOfUnMortgage) == 0:
+            return
+        
+        resultsOfUnMortgage = [self.strategy.heuristic(\
+            stateOfUnMortgage.players[state.players.index(self)], stateOfUnMortgage)\
+                for stateOfUnMortgage in possibleStatesOfUnMortgage]
+        
+        maxValueState = resultsOfUnMortgage.index(max(resultsOfUnMortgage))
+        
+        x = 0
         for prop in state.board.monopoly_board:
-            if prop.type in ["property", "util", "station"] and prop.owner == self and prop.isMortgaged and prop.price/2 <= self.money:
-                if propertyToUnMortgage == None:
-                    propertyToUnMortgage = prop
-                elif propertyToUnMortgage.valueToOwner < prop.valueToOwner:
-                    propertyToUnMortgage = prop
+            if prop.type in ["property", "util", "station"] and prop.owner == self\
+                                            and prop.isMortgaged and prop.price/2 <= self.money:
+                if x == maxValueState:
+                    prop.isMortgaged = False
+                    self.moneyOut(int(prop.price/2), state)
+                    game_output(f'{self.name} UnMortgage {prop.name}')
+                    break
+                x += 1
 
-        if propertyToUnMortgage != None:
-            propertyToUnMortgage.isMortgaged = False
-            self.moneyOut(int(propertyToUnMortgage.price/2), state)
-            game_output(f'{self.name} UnMortgage {propertyToUnMortgage.name}')
+    def stateOfUnMortgage(self, state, space):
+        newState = state.newState()
+        prop = newState.board.monopoly_board[state.board.monopoly_board.index(space)]
+        prop.isMortgaged = False
+        newState.players[state.players.index(self)].moneyOut(int(prop.price/2), newState)
+        return newState
 
     # def tradeProperty(self, board):
 
@@ -438,6 +475,9 @@ class Board:
         self.chanceCards = list(range(0, 15))
         random.shuffle(self.chanceCards)
 
+    def updateBoard(self, newBoard):
+        self.monopoly_board = newBoard.monopoly_board
+
     ## used to check if property sets, utils, or stations owned by the same player
     # it update 'isFullSet' for each
     def isSets(self):
@@ -641,9 +681,9 @@ class GameState:
         pass
 
     @staticmethod
-    def startState(game, players):
+    def startState(players):
         starting = GameState()
-        starting.game = game
+        # starting.game = game
         starting.board = Board()
         starting.players = copy.deepcopy(players)
         starting.round = 0
@@ -652,7 +692,7 @@ class GameState:
     
     def newState(self):
         newState = GameState()
-        newState.game = copy.deepcopy(self.game)
+        # newState.game = copy.deepcopy(self.game)
         newState.board = copy.deepcopy(self.board)
         newState.players = copy.deepcopy(self.players)
         newState.round = copy.deepcopy(self.round)
@@ -660,7 +700,7 @@ class GameState:
         return newState
        
     def updateState(self, newState):
-        self.game = newState.game
+        # self.game = newState.game
         self.board = newState.board
         self.players = newState.players
         self.round = newState.round
@@ -668,7 +708,7 @@ class GameState:
 class Game:
     def __init__(self, players, max_rounds):
         self.max_rounds = max_rounds
-        self.state = GameState.startState(self, players)
+        self.state = GameState.startState(players)
 
     def play(self):
         global GAME_OUTPUT
