@@ -67,7 +67,7 @@ class Player:
             state.board.recalculateChanges()
 
         # check if the player can have a property to build and can build it
-        while state.board.build(self, self.money - self.strategy.cash_threshold):
+        while state.board.build(self, state):
             pass
 
         playAgain = False
@@ -533,88 +533,128 @@ class Board:
     def totalRent(self, player):
         rent = 0
         for prop in self.monopoly_board:
-            if prop.type in ["property","station"] and prop.owner == player and not prop.isMortgaged:
+            if prop.type in ["property","station"] and prop.owner != '' and\
+                prop.owner.name == player.name and not prop.isMortgaged:
                 rent += self.calculateRent(prop)
         return rent
 
-    ## check if there a full set with a player
-    # store all properties the player can build in player.toBuild list
-    def toBuild(self, player):
-        # list player can build
-        toBuildLits = []
+    # ## check if there a full set with a player
+    # # store all properties the player can build in player.toBuild list
+    # def toBuild(self, player):
+    #     # list player can build
+    #     toBuildLits = []
 
-        for prop in self.monopoly_board:
-            if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
-                toBuildLits.append(prop)
-                # game_output(prop.name + " added")
+    #     for prop in self.monopoly_board:
+    #         if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
+    #             toBuildLits.append(prop)
+    #             # game_output(prop.name + " added")
 
-        for i in toBuildLits:
-            game_output(i.name)
-
-        # three techniques to build houses
-        # if player.buildTechnique == "random":
-        #     random.shuffle(toBuildLits)
-        # elif player.buildTechnique == "cheapest":
-        #     toBuildLits.sort(key=lambda x: (x.house_price, x.rent_price[0]))
-        # elif player.buildTechnique == "expensive":
-        #     toBuildLits.sort(key=lambda x: (-x.house_price, -x.rent_price[0]))
-        # else:
-        #     return "something wrong with buildTechnique"
+    #     for i in toBuildLits:
+    #         game_output(i.name)
         
-        player.toBuild = toBuildLits
+    #     player.toBuild = toBuildLits
     
     # this help to find a property to build (already sorted according the build technique)
     # check if the player can build (how much they can pay)
-    def whatToBuild(self, player, maxMoneyToBuild):
+    def whatToBuild(self, player, state):
         # list properties that player can build
-        for prop in self.monopoly_board:
-            if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
-                player.toBuild.append(prop)
-                # game_output(prop.name + " added")
+        # for prop in self.monopoly_board:
+        #     if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
+        #         player.toBuild.append(prop)
+        #         # game_output(prop.name + " added")
         
-        # return nothing if there are nothing to build 
-        if player.toBuild == []:
+        # # return nothing if there are nothing to build 
+        # if player.toBuild == []:
+        #     return False
+        
+        # find all possible state of building
+        possibleStatesOfBuilding = [self.stateOfBuilding(state, prop) for prop in state.board.monopoly_board \
+            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5]
+        
+        #there is no property to mortgage
+        if len(possibleStatesOfBuilding) == 0:
+            game_output(f'There is nothing to build')
             return False
         
-        build = None
-        for i, prop in enumerate(player.toBuild):
-            if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
-                build = player.toBuild[i]
-                buildGroup = build.group
-                break
-        if build == None:
-            return False
+        resultsOfBuilding = [self.strategy.heuristic(\
+            stateOfBuilding.players[state.players.index(self)], stateOfBuilding)\
+                for stateOfBuilding in possibleStatesOfBuilding]
+        
+        maxValueState = resultsOfBuilding.index(max(resultsOfBuilding))
+        
+        x = 0
+        for prop in state.board.monopoly_board:
+            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
+                if x == maxValueState:
+                    prop.houses += 1
+                    player.moneyOut(prop.house_price, state)
+                    game_output(f'Build {prop.name}')
+                    return True
+                x += 1
 
-        numberOfHousesInSet = 0
-        numberOfProperties = 0
-        for prop in player.toBuild:
-            if prop.group == buildGroup:
-                numberOfHousesInSet += prop.houses
-                numberOfProperties += 1
+        # build = None
+        # for i, prop in enumerate(player.toBuild):
+        #     if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
+        #         build = player.toBuild[i]
+        #         buildGroup = build.group
+        #         break
+        # if build == None:
+        #     return False
+
+        # numberOfHousesInSet = 0
+        # numberOfProperties = 0
+        # for prop in player.toBuild:
+        #     if prop.group == buildGroup:
+        #         numberOfHousesInSet += prop.houses
+        #         numberOfProperties += 1
         
-        # check max build in the properties in a set
-        # that ensure we build all properties evenly (max 1 house difference)
-        average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
+        # # check max build in the properties in a set
+        # # that ensure we build all properties evenly (max 1 house difference)
+        # average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
         
-        for prop in player.toBuild:
-            if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
-                return prop
-        return False
+        # for prop in player.toBuild:
+        #     if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
+        #         return prop
+        # return False
 
     # this function do build in properties
-    def build(self, player, maxMoneyToBuild):
-        if maxMoneyToBuild < 50:
+    def build(self, player, state):
+        # find all possible state of building
+        possibleStatesOfBuilding = [self.stateOfBuilding(state, player, prop) for prop in state.board.monopoly_board \
+            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5 and prop.house_price < player.money]
+        
+        #there is no property to build
+        if len(possibleStatesOfBuilding) == 0:
+            game_output(f'There is nothing to build')
             return False
-
-        buildMe = self.whatToBuild(player, maxMoneyToBuild)
-
-        if buildMe == False:
+        
+        resultOfCurrentState = player.strategy.heuristic(player, state)
+        resultsOfBuilding = [player.strategy.heuristic(\
+            stateOfBuilding.players[state.players.index(player)], stateOfBuilding)\
+                for stateOfBuilding in possibleStatesOfBuilding]
+        
+        maxValueState = resultsOfBuilding.index(max(resultsOfBuilding))
+        
+        if resultsOfBuilding[maxValueState] - resultOfCurrentState < player.strategy.build_margin:
+            game_output(f'Refuse to build, not much gain')
             return False
-        else:
-            buildMe.houses += 1
-            player.moneyOut(buildMe.house_price, self)
-            game_output(f'Build {buildMe.name}')
-            return True
+        
+        x = 0
+        for prop in state.board.monopoly_board:
+            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
+                if x == maxValueState:
+                    prop.houses += 1
+                    player.moneyOut(prop.house_price, state)
+                    game_output(f'Build {prop.name}')
+                    return True
+                x += 1
+        
+    def stateOfBuilding(self, state, player, space):
+        newState = state.newState()
+        prop = newState.board.monopoly_board[self.monopoly_board.index(space)]
+        prop.houses += 1
+        newState.players[state.players.index(player)].moneyOut(prop.house_price, newState)
+        return newState
     
     ## return all properties to the game (if player lost)
     def sellAll(self, player):
@@ -734,12 +774,13 @@ class Game:
             self.state.round += 1
 
 class Strategy:
-    def __init__(self, mv, rr, ct, cp, dp):
+    def __init__(self, mv, rr, ct, cp, dp, bm):
         self.money_value = mv              # how the player value money
         self.rent_return = rr              # total paid comparing the the rent return
         self.cash_threshold = ct           # minimum cash the player should have
         self.cash_penalty = cp             # negative applied if money lower than cash threshold
         self.deadly_properties = dp        # negative value applied to the number of deadly spaces
+        self.build_margin = bm             # gain in heuristic required to build property
           
     def heuristic(self, player, state):
         value =  player.money * self.money_value #the value of money comparing to threshold
@@ -797,16 +838,16 @@ def game_output(*args, end="\n"):
 # self.cash_penalty = cp             # negative applied if money lower than cash threshold
 # self.deadly_properties = dp        # negative value applied to the number of deadly spaces
     
-s1 = Strategy(0.5, 1, 500, 0, 1)
-s2 = Strategy(0.1, 5, 500, 0, 1)
+s1 = Strategy(0.1, 5, 500, 500, 1, 50)
+s2 = Strategy(0.1, 5, 500, 500, 1, 50)
 
 a = Player("Alex", s1)
-b = Player("Bop", s2)
+b = Player("Bop", s1)
 c = Player("Alice", s1)
 d = Player("Said", s1)
 
 players = [a, b, c, d]
-print(test_series(players, 500, 5, output=True))
+print(test_series(players, 500, 50, output=False))
 
 
 # players = [a]
