@@ -21,7 +21,6 @@ class Player:
         self.name = newSelf.name
         self.position = newSelf.position
         self.money = newSelf.money  # start 1500
-        self.strategy = newSelf.strategy
         self.toBuild = newSelf.toBuild
         self.inJail = newSelf.inJail
         self.roundsInJail = newSelf.roundsInJail
@@ -146,26 +145,10 @@ class Player:
             ## chose the best state
             resultsOfMortgage = [self.strategy.heuristic(stateOfMortgage.players[state.players.index(self)],\
                                                           stateOfMortgage) for stateOfMortgage in possibleStatesOfMortgage]
-            maxValueState = resultsOfMortgage.index(max(resultsOfMortgage))
+            maxValueState = possibleStatesOfMortgage[resultsOfMortgage.index(max(resultsOfMortgage))]
 
             ## update everything to the best state for player
-            # self.updatePlayer(maxValueState.players[state.players.index(self)])
-            # state.updateState(maxValueState)
-            # state.board.updateBoard(maxValueState.board)
-            x = 0
-            for prop in state.board.monopoly_board:
-                if prop.type in ["property", "util", "station"] and prop.owner == self and not prop.isMortgaged:
-                    if x == maxValueState:
-                        if prop.houses > 0:
-                            self.moneyIn(int(prop.price/2))
-                            prop.houses -= 1
-                            game_output(f'{self.name} sold house from {prop.name}')
-                        else:
-                            prop.isMortgaged = True
-                            self.moneyIn(int(prop.price/2))
-                            game_output(f'{self.name} Mortgage {prop.name}')
-                        break
-                    x += 1
+            state.updateState(maxValueState)
 
             state.board.recalculateChanges()
 
@@ -194,18 +177,10 @@ class Player:
             stateOfUnMortgage.players[state.players.index(self)], stateOfUnMortgage)\
                 for stateOfUnMortgage in possibleStatesOfUnMortgage]
         
-        maxValueState = resultsOfUnMortgage.index(max(resultsOfUnMortgage))
+        maxValueState = possibleStatesOfUnMortgage[resultsOfUnMortgage.index(max(resultsOfUnMortgage))]
         
-        x = 0
-        for prop in state.board.monopoly_board:
-            if prop.type in ["property", "util", "station"] and prop.owner == self\
-                                            and prop.isMortgaged and prop.price/2 <= self.money:
-                if x == maxValueState:
-                    prop.isMortgaged = False
-                    self.moneyOut(int(prop.price/2), state)
-                    game_output(f'{self.name} UnMortgage {prop.name}')
-                    break
-                x += 1
+        state.updateState(maxValueState)
+
 
     def stateOfUnMortgage(self, state, space):
         newState = state.newState()
@@ -396,6 +371,14 @@ class Property:
         self.houses = 0
         self.owner = ""
         self.valueToOwner = 0
+    
+    def updateProp(self, newSelf):
+        self.isFullSet = newSelf.isFullSet
+        self.isMortgaged = newSelf.isMortgaged
+        self.houses = newSelf.houses
+        if self.owner != "":
+            self.owner.updatePlayer(newSelf.owner)
+        self.valueToOwner = newSelf.valueToOwner
 
     def action(self, player, state, rent=None):
         # owned
@@ -475,8 +458,10 @@ class Board:
         self.chanceCards = list(range(0, 15))
         random.shuffle(self.chanceCards)
 
-    def updateBoard(self, newBoard):
-        self.monopoly_board = newBoard.monopoly_board
+    def updateBoard(self, newSelf):
+        for i, updatedProp in enumerate(newSelf.monopoly_board):
+            if type(self.monopoly_board[i]) == Property:
+                self.monopoly_board[i].updateProp(updatedProp)
 
     ## used to check if property sets, utils, or stations owned by the same player
     # it update 'isFullSet' for each
@@ -537,36 +522,10 @@ class Board:
                 prop.owner.name == player.name and not prop.isMortgaged:
                 rent += self.calculateRent(prop)
         return rent
-
-    # ## check if there a full set with a player
-    # # store all properties the player can build in player.toBuild list
-    # def toBuild(self, player):
-    #     # list player can build
-    #     toBuildLits = []
-
-    #     for prop in self.monopoly_board:
-    #         if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
-    #             toBuildLits.append(prop)
-    #             # game_output(prop.name + " added")
-
-    #     for i in toBuildLits:
-    #         game_output(i.name)
-        
-    #     player.toBuild = toBuildLits
     
     # this help to find a property to build (already sorted according the build technique)
     # check if the player can build (how much they can pay)
     def whatToBuild(self, player, state):
-        # list properties that player can build
-        # for prop in self.monopoly_board:
-        #     if type(prop) == Property and prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
-        #         player.toBuild.append(prop)
-        #         # game_output(prop.name + " added")
-        
-        # # return nothing if there are nothing to build 
-        # if player.toBuild == []:
-        #     return False
-        
         # find all possible state of building
         possibleStatesOfBuilding = [self.stateOfBuilding(state, prop) for prop in state.board.monopoly_board \
             if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5]
@@ -580,42 +539,9 @@ class Board:
             stateOfBuilding.players[state.players.index(self)], stateOfBuilding)\
                 for stateOfBuilding in possibleStatesOfBuilding]
         
-        maxValueState = resultsOfBuilding.index(max(resultsOfBuilding))
+        maxValueState = possibleStatesOfBuilding[resultsOfBuilding.index(max(resultsOfBuilding))]
         
-        x = 0
-        for prop in state.board.monopoly_board:
-            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5:
-                if x == maxValueState:
-                    prop.houses += 1
-                    player.moneyOut(prop.house_price, state)
-                    game_output(f'Build {prop.name}')
-                    return True
-                x += 1
-
-        # build = None
-        # for i, prop in enumerate(player.toBuild):
-        #     if prop.house_price <= maxMoneyToBuild and prop.houses < 5:
-        #         build = player.toBuild[i]
-        #         buildGroup = build.group
-        #         break
-        # if build == None:
-        #     return False
-
-        # numberOfHousesInSet = 0
-        # numberOfProperties = 0
-        # for prop in player.toBuild:
-        #     if prop.group == buildGroup:
-        #         numberOfHousesInSet += prop.houses
-        #         numberOfProperties += 1
-        
-        # # check max build in the properties in a set
-        # # that ensure we build all properties evenly (max 1 house difference)
-        # average = min((math.ceil(numberOfHousesInSet / numberOfProperties + 0.1)), 5) # add 0.1 is a hack to round up always :) # can't build more that 5 
-        
-        # for prop in player.toBuild:
-        #     if prop.house_price <= maxMoneyToBuild and prop.houses < average and prop.group == buildGroup:
-        #         return prop
-        # return False
+        state.updateState(maxValueState)
 
     # this function do build in properties
     def build(self, player, state):
@@ -665,7 +591,6 @@ class Board:
                 prop.isMortgaged = False
                 prop.isFullSet = False
 
-
     # rent return comparing to cost
     def rentReturn(self, player):
         cost = 0
@@ -696,9 +621,6 @@ class Board:
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
         self.isSets()
-        # for player in self.players:
-            # self.wantedProperties(player)
-            # self.valuePlayersProperties(player)
 
     def action(self, state, player):
         # Landed on a property - calculate rent first
@@ -741,8 +663,9 @@ class GameState:
        
     def updateState(self, newState):
         # self.game = newState.game
-        self.board = newState.board
-        self.players = newState.players
+        self.board.updateBoard(newState.board)
+        for i, player in enumerate(newState.players):
+            self.players[i].updatePlayer(player)
         self.round = newState.round
 
 class Game:
@@ -799,7 +722,7 @@ def test_series(players, max_rounds, game_num, output):
     wins = {}
     game_played = 0
     while game_played < game_num:
-        game_output("\nnew  game\n")
+        game_output(f'\n\nGame {game_played+1}:')
         GAME_OUTPUT = output
         random.shuffle(players)
         game = Game( players, max_rounds )
