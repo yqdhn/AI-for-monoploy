@@ -61,6 +61,9 @@ class Player:
         while self.unMortgage(state):
             state.board.recalculateChanges()
 
+        # check all possible states of trading
+        self.tradeProperty(state)
+
         # check if the player can have a property to build and can build it
         while state.board.build(self, state):
             pass
@@ -190,7 +193,45 @@ class Player:
         newState.players[state.players.index(self)].moneyOut(int(prop.price/2), newState)
         return newState
 
-    # def tradeProperty(self, board):
+    def tradeProperty(self, state):
+        possibleStatesOfTrade, resultsOfTrade = [], []
+        resultOfCurrentStateForPlayer = self.strategy.heuristic(self, state)
+        
+        for plyerProperty in state.board.monopoly_board:
+            if plyerProperty.type in ["property"] and plyerProperty.owner == self:
+                for targetProperty in state.board.monopoly_board:
+                    if targetProperty.type in ["property"] and targetProperty.owner != "" and targetProperty.owner != self:
+                        # current state value for opponent (based on player strategy)
+                        resultOfCurrentStateForOpponent = self.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
+                        
+                        tradingState = self.stateOfTrade(state, plyerProperty, targetProperty)
+                        # trading state value for player and opponent (based on player strategy)
+                        resultForPlayer = self.strategy.heuristic(tradingState.players[state.players.index(plyerProperty.owner)], tradingState)
+                        resultForOpponent = self.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
+                        # check if there is a gain on trading
+                        # this gain must be more than opponent gain
+                        # opponent have a gain value as well
+                        if resultForPlayer > resultOfCurrentStateForPlayer\
+                            and resultForOpponent > resultOfCurrentStateForOpponent:
+                            possibleStatesOfTrade.append(tradingState)
+                            resultsOfTrade.append(resultForPlayer-resultForOpponent)
+        
+        if len(possibleStatesOfTrade) == 0:
+            return False
+        
+        maxValueState = possibleStatesOfTrade[resultsOfTrade.index(max(resultsOfTrade))]
+        
+        state.update_state(maxValueState)
+    
+    def stateOfTrade(self, state, have, want):
+        newState = state.newState()
+        haveProp = newState.board.monopoly_board[state.board.monopoly_board.index(have)]
+        wantProp = newState.board.monopoly_board[state.board.monopoly_board.index(want)]
+        haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
+        return newState
+
+
+
 
 class cell:
     def __init__(self, name, type):
@@ -760,7 +801,7 @@ c = Player("Alice", s1)
 d = Player("Said", s1)
 
 players = [a, b, c, d]
-print(test_series(players, 500, 50, output=False))
+print(test_series(players, 200, 1, output=False))
 
 
 # players = [a]
