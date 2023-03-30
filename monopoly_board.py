@@ -1,5 +1,6 @@
 import random
 import copy
+from fractions import Fraction
 
 global stut
 
@@ -55,7 +56,7 @@ class Player:
         if not self.alive:
             return False
 
-        state.board.recalculateChanges()
+        # state.board.recalculateChanges()
 
         ## check if there is a property to un mortgage
         while self.unMortgage(state):
@@ -161,7 +162,7 @@ class Player:
         else:
             prop.isMortgaged = True
             newState.players[state.players.index(self)].moneyIn(int(prop.price/2))
-
+        newState.board.recalculateChanges()
         return newState
 
     def unMortgage(self, state):
@@ -191,30 +192,30 @@ class Player:
         prop = newState.board.monopoly_board[state.board.monopoly_board.index(space)]
         prop.isMortgaged = False
         newState.players[state.players.index(self)].moneyOut(int(prop.price/2), newState)
+        newState.board.recalculateChanges()
         return newState
 
     def tradeProperty(self, state):
         possibleStatesOfTrade, resultsOfTrade = [], []
         resultOfCurrentStateForPlayer = self.strategy.heuristic(self, state)
         
-        for plyerProperty in state.board.monopoly_board:
-            if plyerProperty.type in ["property"] and plyerProperty.owner == self:
-                for targetProperty in state.board.monopoly_board:
-                    if targetProperty.type in ["property"] and targetProperty.owner != "" and targetProperty.owner != self:
-                        # current state value for opponent (based on player strategy)
-                        resultOfCurrentStateForOpponent = self.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
-                        
-                        tradingState = self.stateOfTrade(state, plyerProperty, targetProperty)
-                        # trading state value for player and opponent (based on player strategy)
-                        resultForPlayer = self.strategy.heuristic(tradingState.players[state.players.index(plyerProperty.owner)], tradingState)
-                        resultForOpponent = self.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
-                        # check if there is a gain on trading
-                        # this gain must be more than opponent gain
-                        # opponent have a gain value as well
-                        if resultForPlayer > resultOfCurrentStateForPlayer\
-                            and resultForOpponent > resultOfCurrentStateForOpponent:
-                            possibleStatesOfTrade.append(tradingState)
-                            resultsOfTrade.append(resultForPlayer-resultForOpponent)
+        for plyerProperty in filter(lambda prop: prop.type == "property" and prop.owner == self, state.board.monopoly_board):
+            for targetProperty in filter(lambda prop: prop.type == "property" and prop.owner != "" and prop.owner != self, state.board.monopoly_board):
+                # current state value for opponent (based on target player strategy)
+                resultOfCurrentStateForOpponent = targetProperty.owner.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
+
+                tradingState = self.stateOfTrade(state, plyerProperty, targetProperty)
+                # trading state value for player and opponent (based on player strategy)
+                resultForPlayer = self.strategy.heuristic(tradingState.players[state.players.index(plyerProperty.owner)], tradingState)
+                resultForOpponent = targetProperty.owner.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
+
+                # check if there is a gain on trading
+                # this gain must be more than opponent gain
+                # opponent have a gain value as well
+                if resultForPlayer > resultOfCurrentStateForPlayer\
+                    and resultForOpponent > resultOfCurrentStateForOpponent:
+                    possibleStatesOfTrade.append(tradingState)
+                    resultsOfTrade.append(resultForPlayer-resultForOpponent)
         
         if len(possibleStatesOfTrade) == 0:
             return False
@@ -228,6 +229,7 @@ class Player:
         haveProp = newState.board.monopoly_board[state.board.monopoly_board.index(have)]
         wantProp = newState.board.monopoly_board[state.board.monopoly_board.index(want)]
         haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
+        newState.board.recalculateChanges()
         return newState
 
 
@@ -408,19 +410,18 @@ class Property:
         self.rent_price = rent_price
         self.house_price = house_price
         self.group = group
-        self.isFullSet = False
+        self.groupShare = 0
         self.isMortgaged = False
         self.houses = 0
         self.owner = ""
-        self.valueToOwner = 0
+        self.neighbors = []
     
     def update_property(self, newSelf):
-        self.isFullSet = newSelf.isFullSet
+        self.groupShare = newSelf.groupShare
         self.isMortgaged = newSelf.isMortgaged
         self.houses = newSelf.houses
         if self.owner != "":
             self.owner.update_player(newSelf.owner)
-        self.valueToOwner = newSelf.valueToOwner
 
     def action(self, player, state, rent=None):
         # owned
@@ -434,6 +435,7 @@ class Property:
                 player.moneyOut(self.price, state)
                 self.owner = player
                 game_output(player.name + " buy " + self.name)
+                state.board.recalculateChanges()
             else:
                 game_output(player.name + " can't buy " + self.name)
 
@@ -492,6 +494,13 @@ class Board:
             cell("Super Tax", "Tax"), #200
             Property("Mayfair",           "property",     400,   (50,200, 600, 1400, 1700, 2000),  200,"dark blue")
         ]
+        # update neighbors for properties in the same group
+        for prop in self.monopoly_board:
+            if type(prop) == Property:
+                for other_prop in self.monopoly_board:
+                    if type(other_prop) == Property and prop.group == other_prop.group and prop != other_prop:
+                        prop.neighbors.append(other_prop)
+            
 
         # Community Chest
         self.communityCards = list(range(0, 14))
@@ -506,22 +515,18 @@ class Board:
                 self.monopoly_board[i].update_property(updatedProp)
 
     ## used to check if property sets, utils, or stations owned by the same player
-    # it update 'isFullSet' for each
+    # it update 'groupShare' for each
     def isSets(self):
-        groups = {}
         for prop in self.monopoly_board:
             if type(prop) == Property:
-                if prop.group in groups and prop.owner != groups[prop.group] or prop.owner == "" or prop.isMortgaged:
-                    groups[prop.group] = False
-                else:
-                    groups[prop.group] = prop.owner
-                
+                prop.groupShare = 0
+
         for prop in self.monopoly_board:
-            if type(prop) == Property:
-                if prop.group in groups and groups[prop.group] != False:
-                    prop.isFullSet = True
-                else:
-                    prop.isFullSet = False
+            if type(prop) == Property and prop.owner != "":
+                prop.groupShare += Fraction(1,(len(prop.neighbors)+1))
+                for neighbor in prop.neighbors:
+                    if neighbor.owner != "" and prop.owner == neighbor.owner:
+                        neighbor.groupShare += Fraction(1,(len(prop.neighbors)+1))
 
     ## return the number of stations
     def calculateStations(self, station):
@@ -536,14 +541,14 @@ class Board:
         if type(property) == Property and not property.isMortgaged:
             ## normal property rent (count houses if there some)
             if property.type == "property":
-                if property.houses == 0 and property.isFullSet:
+                if property.houses == 0 and property.groupShare == 1:
                     return property.rent_price[0]*2
                 else:
                     return property.rent_price[property.houses]
 
             ## utility rent (if have 1 or 2) 
             elif property.type == "util":
-                if property.isFullSet:
+                if property.groupShare == 1:
                     return (random.randint(1, 6)+random.randint(1, 6)) * 10
                 else:
                     return (random.randint(1, 6)+random.randint(1, 6)) * 4
@@ -570,7 +575,7 @@ class Board:
     def whatToBuild(self, player, state):
         # find all possible state of building
         possibleStatesOfBuilding = [self.stateOfBuilding(state, prop) for prop in state.board.monopoly_board \
-            if prop.type == "property" and prop.isFullSet and prop.owner == player and prop.houses < 5]
+            if prop.type == "property" and prop.groupShare == 1 and prop.owner == player and prop.houses < 5]
         
         #there is no property to build
         if len(possibleStatesOfBuilding) == 0:
@@ -592,7 +597,7 @@ class Board:
             self.stateOfBuilding(state, player, prop)
             for prop in state.board.monopoly_board
             if prop.type == "property"
-            and prop.isFullSet
+            and prop.groupShare == 1
             and prop.owner == player
             and prop.houses < 5
             and prop.house_price <= player.money]
@@ -636,7 +641,7 @@ class Board:
                 prop.owner = ""
                 prop.houses = 0
                 prop.isMortgaged = False
-                prop.isFullSet = False
+                prop.groupShare = 0
 
     # calculate the number of deadly properties
     def dangerousProperties(self, player):
@@ -644,11 +649,30 @@ class Board:
         propCount = 0
         for prop in self.monopoly_board:
             if prop.type in ["property"]:
-                if prop.owner != player and self.calculateRent(prop) > player.money:
+                if prop.owner != "" and prop.owner.name != player.name and self.calculateRent(prop) > player.money:
                     deadly += 1
                 propCount += 1
         
         return deadly / propCount
+    
+    def propertyShareInGroup(self, group, player):
+        propertiesCount = 0
+        ownedProperties = 0
+        for prop in self.monopoly_board:
+            if prop.type == "property" and prop.group == group:
+                propertiesCount += 1
+                if prop.owner == player:
+                    ownedProperties += 1
+        
+        return ownedProperties / propertiesCount
+    
+    def totalShares(self, player):
+        totalCount = 0
+        for prop in self.monopoly_board:
+            if prop.type == "property" and prop.owner != "" and prop.owner.name == player.name:
+                totalCount += prop.groupShare
+        
+        return totalCount
 
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
@@ -710,7 +734,7 @@ class Game:
         playing = True
         while playing:
             for player in self.state.players:
-                player.strategy.heuristic(player, self.state)
+                # player.strategy.heuristic(player, self.state)
                 player.makeAMove(self.state)
                 game_output("")
                 if self.state.board.gameOver(self.state.players):
@@ -729,13 +753,14 @@ class Game:
             self.state.round += 1
 
 class Strategy:
-    def __init__(self, mv, rr, ct, cp, dp, bm):
+    def __init__(self, mv, rr, ct, cp, dp, bm, pgs):
         self.money_value = mv              # how the player value money
         self.rent_return = rr              # total paid comparing the the rent return
         self.cash_threshold = ct           # minimum cash the player should have
         self.cash_penalty = cp             # negative applied if money lower than cash threshold
         self.deadly_properties = dp        # negative value applied to the number of deadly spaces
         self.build_margin = bm             # gain in heuristic required to build property
+        self.property_group_share = pgs    # positive multiplier for the group shares in the board
           
     def heuristic(self, player, state):
         value =  player.money * self.money_value #the value of money comparing to threshold
@@ -745,6 +770,7 @@ class Strategy:
         if (player.money < self.cash_threshold):
             value -= self.cash_penalty
 
+        value += state.board.totalShares(player) * self.property_group_share
         return value
 
 
@@ -792,17 +818,42 @@ def game_output(*args, end="\n"):
 # self.cash_penalty = cp             # negative applied if money lower than cash threshold
 # self.deadly_properties = dp        # negative value applied to the number of deadly spaces
     
-s1 = Strategy(0.1, 5, 500, 500, 1, 50)
-s2 = Strategy(0.1, 5, 500, 500, 1, 50)
+s1 = Strategy(0.1, 5, 500, 500, 1, 50, 1)
+s2 = Strategy(0.5, 5, 500, 500, 1, 50, 1)
+s3 = Strategy(0.5, 10, 500, 500, 1, 50, 1)
+s4 = Strategy(0.0, 7, 500, 500, 1, 50, 1)
 
 a = Player("Alex", s1)
-b = Player("Bop", s1)
-c = Player("Alice", s1)
-d = Player("Said", s1)
+b = Player("Bop", s2)
+c = Player("Alice", s3)
+d = Player("Said", s4)
 
-players = [a, b, c, d]
-print(test_series(players, 200, 1, output=False))
+players = [a, b]
+print(test_series(players, 200, 100, output=False))
 
+
+# game = Board()
+# for x in game.monopoly_board:
+#     if type(x) == Property:
+#         for y in x.neighbors:
+#             print(y.name+",", end='')
+#         print("")
+
+# y = False
+# for x in game.monopoly_board:
+#     if type(x) == Property and y:
+#         x.owner = a
+#         y = False
+#     else:
+#         x.owner = b
+#         y = True
+
+# game.isSets()
+# print(game.totalShares(b))
+
+# for x in game.monopoly_board:
+#     if type(x) == Property:
+#         print(x.name + ": " + str(x.groupShare) + " "+  x.owner.name )
 
 # players = [a]
 # game = Game( players, 500 )
@@ -820,4 +871,3 @@ print(test_series(players, 200, 1, output=False))
 #         b.moveTo(game.state.board.monopoly_board.index(x), game.state)
 #         print(f'{x.name:25}: {round(b.strategy.heuristic(b,game.state),4):6} m:{b.money}')
     
-
