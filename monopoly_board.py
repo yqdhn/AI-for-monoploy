@@ -1,6 +1,7 @@
 import random
 import copy
 from fractions import Fraction
+import time
 
 global stut
 
@@ -198,9 +199,9 @@ class Player:
     def tradeProperty(self, state):
         possibleStatesOfTrade, resultsOfTrade = [], []
         resultOfCurrentStateForPlayer = self.strategy.heuristic(self, state)
-        
-        for plyerProperty in filter(lambda prop: prop.type == "property" and prop.owner == self, state.board.monopoly_board):
-            for targetProperty in filter(lambda prop: prop.type == "property" and prop.owner != "" and prop.owner != self, state.board.monopoly_board):
+        give, get = [], []
+        for plyerProperty in filter(lambda prop: prop.type == "property" and prop.owner == self and prop.houses == 0, state.board.monopoly_board):
+            for targetProperty in filter(lambda prop: prop.type == "property" and prop.owner != "" and prop.owner != self and prop.houses == 0, state.board.monopoly_board):
                 # current state value for opponent (based on target player strategy)
                 resultOfCurrentStateForOpponent = targetProperty.owner.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
 
@@ -216,13 +217,23 @@ class Player:
                     and resultForOpponent > resultOfCurrentStateForOpponent:
                     possibleStatesOfTrade.append(tradingState)
                     resultsOfTrade.append(resultForPlayer-resultForOpponent)
+                    give.append(plyerProperty)
+                    get.append(targetProperty)
         
         if len(possibleStatesOfTrade) == 0:
             return False
         
         maxValueState = possibleStatesOfTrade[resultsOfTrade.index(max(resultsOfTrade))]
-        
-        state.update_state(maxValueState)
+        # print(give[resultsOfTrade.index(max(resultsOfTrade))].name + " <-> " + get[resultsOfTrade.index(max(resultsOfTrade))].name)
+        # state.output_state()
+        haveProp = give[resultsOfTrade.index(max(resultsOfTrade))]
+        wantProp =  get[resultsOfTrade.index(max(resultsOfTrade))]
+        haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
+        state.board.recalculateChanges()
+        # # state.update_state(maxValueState)
+        # print("update")
+        # state.output_state()
+        # print("")
     
     def stateOfTrade(self, state, have, want):
         newState = state.newState()
@@ -422,6 +433,7 @@ class Property:
         self.houses = newSelf.houses
         if self.owner != "":
             self.owner.update_player(newSelf.owner)
+
 
     def action(self, player, state, rent=None):
         # owned
@@ -719,10 +731,42 @@ class GameState:
        
     def update_state(self, newState):
         # self.game = newState.game
-        self.board.update_board(newState.board)
+        for i, updatedProp in enumerate(newState.board.monopoly_board):
+            if type(self.board.monopoly_board[i]) == Property:
+                self.board.monopoly_board[i].groupShare = updatedProp.groupShare
+                self.board.monopoly_board[i].isMortgaged = updatedProp.isMortgaged
+                self.board.monopoly_board[i].houses = updatedProp.houses
+                if self.board.monopoly_board[i].owner != "":
+                    self.board.monopoly_board[i].owner.name = updatedProp.owner.name
+                    self.board.monopoly_board[i].owner.position = updatedProp.owner.position
+                    self.board.monopoly_board[i].owner.money = updatedProp.owner.money  # start 1500
+                    self.board.monopoly_board[i].owner.inJail = updatedProp.owner.inJail
+                    self.board.monopoly_board[i].owner.roundsInJail = updatedProp.owner.roundsInJail
+                    self.board.monopoly_board[i].owner.dicesDoubleCount = updatedProp.owner.dicesDoubleCount
+                    self.board.monopoly_board[i].owner.alive = updatedProp.owner.alive
+                
         for i, player in enumerate(newState.players):
-            self.players[i].update_player(player)
+            self.players[i].name = player.name
+            self.players[i].position = player.position
+            self.players[i].money = player.money  # start 1500
+            self.players[i].inJail = player.inJail
+            self.players[i].roundsInJail = player.roundsInJail
+            self.players[i].dicesDoubleCount = player.dicesDoubleCount
+            self.players[i].alive = player.alive
         self.round = newState.round
+
+    def output_state(self):
+        print(f'name |money|po')
+        for player in self.players:
+            print(f'{player.name:5}|{player.money:5}|{player.position:2}')
+        
+        print(f'property:                |owner|groupShare')
+        for prop in self.board.monopoly_board:
+            if prop.type == "property":
+                if prop.owner != "":
+                    print(f'{prop.name:25}|{prop.owner.name:5}|{round(float(prop.groupShare),3):2}')
+                else:
+                    print(f'{prop.name:25}|{prop.owner:5}|{round(float(prop.groupShare),3):2}')
 
 class Game:
     def __init__(self, players, max_rounds):
@@ -750,6 +794,7 @@ class Game:
                 playing = False
                 GAME_OUTPUT = True
                 game_output("number of rounds exceeded\n")
+                return False
             self.state.round += 1
 
 class Strategy:
@@ -784,14 +829,11 @@ def test_series(players, max_rounds, game_num, output):
         random.shuffle(players)
         game = Game( players, max_rounds )
         winner = game.play()
-        if winner == False:
-            pass #continue
-        else:
+        if winner != False:
             if winner not in wins:
                 wins[winner] = 0
             wins[winner] = wins.get(winner) + 1
-
-        game_played += 1
+            game_played += 1
 
         for player in game.state.players:
             game_output(f'{player.name:6} have {player.money}')
@@ -818,18 +860,21 @@ def game_output(*args, end="\n"):
 # self.cash_penalty = cp             # negative applied if money lower than cash threshold
 # self.deadly_properties = dp        # negative value applied to the number of deadly spaces
     
-s1 = Strategy(0.1, 5, 500, 500, 1, 50, 1)
-s2 = Strategy(0.5, 5, 500, 500, 1, 50, 1)
+s1 = Strategy(0.5, 2, 500, 500, 1, 50, 1)
+s2 = Strategy(0.5, 10, 500, 500, 1, 50, 1)
 s3 = Strategy(0.5, 10, 500, 500, 1, 50, 1)
 s4 = Strategy(0.0, 7, 500, 500, 1, 50, 1)
 
 a = Player("Alex", s1)
 b = Player("Bop", s2)
-c = Player("Alice", s3)
-d = Player("Said", s4)
+c = Player("Alice", s1)
+d = Player("Said", s1)
 
-players = [a, b]
+players = [a, b, c, d]
+start = time.time()
 print(test_series(players, 200, 100, output=False))
+end = time.time()
+print(end-start)
 
 
 # game = Board()
@@ -870,4 +915,6 @@ print(test_series(players, 200, 100, output=False))
 #     if type(x) == Property:
 #         b.moveTo(game.state.board.monopoly_board.index(x), game.state)
 #         print(f'{x.name:25}: {round(b.strategy.heuristic(b,game.state),4):6} m:{b.money}')
-    
+
+# {'Bop': 56, 'Alex': 12, None: 5, 'Alice': 13, 'Said': 14}
+# {'Said': 26, 'Bop': 46, 'Alex': 11, 'Alice': 17}
