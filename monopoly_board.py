@@ -15,13 +15,13 @@ class Player:
         self.roundsInJail = 0
         self.dicesDoubleCount = 0
         self.alive = True
+        self.opponents = []
         
     # money management
     # get paid
     def moneyIn(self, amount):
-        game_output(str(amount) + " added to " + self.name)
         self.money += amount
-        game_output(self.name + " money become " + str(self.money))
+        game_output(str(amount) + " added to " + self.name + " money become " + str(self.money))
 
     # pay someone or buy
     def moneyOut(self, amount, state):
@@ -55,7 +55,10 @@ class Player:
             pass
 
         # check all possible states of trading
-        self.tradeProperty(state)
+        # self.tradeProperty(state)
+
+        # buy property (based on gain player get)
+        self.buyProperty(state)
 
         # check if the player can have a property to build and can build it
         while state.board.build(self, state):
@@ -197,32 +200,130 @@ class Player:
         newState.players[state.players.index(self)].moneyOut(int(prop.price/2), newState)
         newState.board.recalculateChanges()
         return newState
+    
+    ## this functions allow player in his turn to check if he  
+    ## wants to buy any available properties (owned buy others)
+    ## player can buy if the buy gain higher than buy margin
+    def buyProperty(self, state):
+        buyingPropAndPrice = []
+        PlayerCur = self.strategy.heuristic(self, state)
+        for prop in state.board.monopoly_board:
+            if prop.type == "property" and prop.owner != '' and prop.owner != self and prop.houses == 0:
+                price = self.buyingPriceWithinMargin(state, prop.owner, prop, PlayerCur + self.strategy.buy_margin)
+                if price != None and price > 0:
+                    buyingPropAndPrice.append([prop, price])
+                    
+        if buyingPropAndPrice == []:
+            game_output("No buying offers made by ", self.name)
+            return
+        
+        for property, price in buyingPropAndPrice:
+            game_output(f'{self.name:6}:{self.money:6} offers £{price} for {property.name}:{property.owner.name}.')
+
+
+        acceptedOffers = []
+        for property, price in buyingPropAndPrice:
+            before = property.owner.strategy.heuristic(property.owner, state)
+            after = property.owner.sellStateResult(state, self, property, price)
+            gain = after - before
+            if gain > property.owner.strategy.sell_margin:
+                acceptedOffers.append([property, price, gain])
+                before = property.owner.strategy.heuristic(property.owner, state)
+                after = property.owner.sellStateResult(state, self, property, price)
+            
+        
+        
+        if acceptedOffers == []:
+            game_output(self.name + "'s offers have been declined")
+            return
+        
+        acceptedOffers.sort(key=lambda gain: gain[2], reverse=True)
+        property, price, gain = acceptedOffers[0]
+        game_output(f'DEAL: {property.owner.name:6} sold {property.name:21} to {self.name:6} for {price} of value {round(gain,2):5}')
+        paid = self.moneyOut(price, state)
+        property.owner.moneyIn(paid)
+        property.owner = self
+        state.board.recalculateChanges()
+
+
+    def buyingPriceWithinMargin(self, state, op, wantProp, targetValue):
+        # If player pay nothing, is the property useful for him
+        # to make sure getting this property meet the margin
+        BuyResultWithZero = self.buyStateResult(state, op, wantProp, wantProp.price/2)
+        if BuyResultWithZero >= targetValue:
+            low = 0
+            high = self.money 
+            while low + 1 < high:
+                mid = (low + high) // 2
+                resultMid = self.buyStateResult(state, op, wantProp, mid)
+                
+                if resultMid <= targetValue:
+                    high = mid
+                else:
+                    low = mid
+            return low
+        
+        return None
+
+    def buyStateResult(self, state, seller, buyProp, cost):
+        buyProp.owner = self
+        self.moneyOut(cost, state)
+        seller.moneyIn(cost)
+        state.board.recalculateChanges()
+        result = self.strategy.heuristic(self, state)
+        # return everything
+        buyProp.owner = seller
+        self.moneyIn(cost)
+        seller.moneyOut(cost, state)
+        state.board.recalculateChanges()
+        return result
+    
+    def sellStateResult(self, state, buyer, sellProp, cost):
+        sellProp.owner = buyer
+        buyer.moneyOut(cost, state)
+        self.moneyIn(cost)
+        state.board.recalculateChanges()
+        result = self.strategy.heuristic(self, state)
+        # return everything
+        sellProp.owner = self
+        buyer.moneyIn(cost)
+        self.moneyOut(cost, state)
+        state.board.recalculateChanges()
+        return result
+
+
 
     def tradeProperty(self, state):
+        state.output_state()
         possibleStatesOfTrade, resultsOfTrade = [], []
-        resultOfCurrentStateForPlayer = self.strategy.heuristic(self, state)
         give, get = [], []
         for plyerProperty in filter(lambda prop: prop.type == "property" and prop.owner == self and prop.houses == 0, state.board.monopoly_board):
             for targetProperty in filter(lambda prop: prop.type == "property" and prop.owner != "" and prop.owner != self and prop.houses == 0, state.board.monopoly_board):
+                # current state value for opponent (based on player strategy, who makes the offer)
+                playerPropCur = self.strategy.propertyHeuristic(plyerProperty)
                 # current state value for opponent (based on target player strategy)
-                resultOfCurrentStateForOpponent = targetProperty.owner.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
+                opPropCur = targetProperty.owner.strategy.propertyHeuristic(targetProperty)
 
                 tradingState = self.stateOfTrade(state, plyerProperty, targetProperty)
-                # trading state value for player and opponent (based on player strategy)
-                resultForPlayer = self.strategy.heuristic(tradingState.players[state.players.index(plyerProperty.owner)], tradingState)
-                resultForOpponent = targetProperty.owner.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
+                # trading state value for player and opponent (based on player strategy, who makes the offer)
+                playerPropTrade = self.strategy.propertyHeuristic(tradingState.board.monopoly_board[state.board.monopoly_board.index(plyerProperty)])
+                # trading state value for opponent (based on target player strategy)
+                opPropTrade = targetProperty.owner.strategy.propertyHeuristic(tradingState.board.monopoly_board[state.board.monopoly_board.index(targetProperty)])
 
                 # check if there is a gain on trading
                 # this gain must be more than opponent gain
                 # opponent have a gain value as well
-                if resultForPlayer > resultOfCurrentStateForPlayer\
-                    and resultForOpponent > resultOfCurrentStateForOpponent:
-                    possibleStatesOfTrade.append(tradingState)
-                    resultsOfTrade.append(resultForPlayer-resultForOpponent)
+                print(f'{plyerProperty.owner.name:6}|{plyerProperty.name:21}|{round(playerPropCur,2):^8}|{round(playerPropTrade,2):^8}|{playerPropTrade > playerPropCur}')
+                print(f'{targetProperty.owner.name:6}|{targetProperty.name:21}|{round(opPropCur,2):8}|{round(opPropTrade,2):^8}|{opPropTrade > opPropCur}')
+                print("-------------------------------------------")
+                if playerPropTrade > playerPropCur\
+                    and opPropTrade > opPropCur:
+                    resultsOfTrade.append((playerPropTrade-playerPropCur)\
+                                          -(opPropTrade-opPropCur))
                     give.append(plyerProperty)
                     get.append(targetProperty)
         
-        if len(possibleStatesOfTrade) == 0:
+        if len(resultsOfTrade) == 0:
             return False
         
         maxValueState = resultsOfTrade.index(max(resultsOfTrade))
@@ -239,6 +340,59 @@ class Player:
         haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
         newState.board.recalculateChanges()
         return newState
+    
+
+    def tradeProperty(self, state):
+        # state.output_state()
+        possibleStatesOfTrade, resultsOfTrade = [], []
+        resultOfCurrentStateForPlayer = self.strategy.heuristic(self, state)
+        give, get = [], []
+        for plyerProperty in filter(lambda prop: prop.type == "property" and prop.owner == self and prop.houses == 0, state.board.monopoly_board):
+            for targetProperty in filter(lambda prop: prop.type == "property" and prop.owner != "" and prop.owner != self and prop.houses == 0, state.board.monopoly_board):
+                # current state value for opponent (based on player strategy, who makes the offer)
+                playerResultOfCurrentStateForOpponent = self.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
+                # current state value for opponent (based on target player strategy)
+                resultOfCurrentStateForOpponent = targetProperty.owner.strategy.heuristic(state.players[state.players.index(targetProperty.owner)], state)
+
+                tradingState = self.stateOfTrade(state, plyerProperty, targetProperty)
+                # trading state value for player and opponent (based on player strategy, who makes the offer)
+                resultForPlayer = self.strategy.heuristic(tradingState.players[state.players.index(plyerProperty.owner)], tradingState)
+                PlayerResultForOpponent = self.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
+                # trading state value for opponent (based on target player strategy)
+                resultForOpponent = targetProperty.owner.strategy.heuristic(tradingState.players[state.players.index(targetProperty.owner)], tradingState)
+
+                # check if there is a gain on trading
+                # this gain must be more than opponent gain
+                # opponent have a gain value as well
+                # print(f'{plyerProperty.owner.name:6}|{plyerProperty.name:21}|{round(resultOfCurrentStateForPlayer,2):^8}|{round(resultForPlayer,2):^8}|{resultForPlayer > resultOfCurrentStateForPlayer}')
+                # print(f'{targetProperty.owner.name:6}|{targetProperty.name:21}|{round(resultOfCurrentStateForOpponent,2):8}|{round(resultForOpponent,2):^8}|{resultForOpponent > resultOfCurrentStateForOpponent}')
+                # print("-------------------------------------------")
+                if resultForPlayer > resultOfCurrentStateForPlayer\
+                    and resultForOpponent > resultOfCurrentStateForOpponent:
+                    possibleStatesOfTrade.append(tradingState)
+                    resultsOfTrade.append((resultOfCurrentStateForPlayer-resultForPlayer)\
+                                          -(resultOfCurrentStateForOpponent-resultForOpponent))
+                    give.append(plyerProperty)
+                    get.append(targetProperty)
+        
+        if len(possibleStatesOfTrade) == 0:
+            return False
+        
+        maxValueState = resultsOfTrade.index(max(resultsOfTrade))
+        # state.output_state()
+        haveProp = give[maxValueState]
+        wantProp =  get[maxValueState]
+        haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
+        state.board.recalculateChanges()
+    
+    def stateOfTrade(self, state, have, want):
+        newState = state.newState()
+        haveProp = newState.board.monopoly_board[state.board.monopoly_board.index(have)]
+        wantProp = newState.board.monopoly_board[state.board.monopoly_board.index(want)]
+        haveProp.owner, wantProp.owner = wantProp.owner, haveProp.owner
+        newState.board.recalculateChanges()
+        return newState
+
 
 
 
@@ -275,7 +429,7 @@ class cell:
         # draw a card
         card = state.board.communityCards.pop(0)
 
-        # auctions
+        # actions
         if card == 0:
             game_output("Annuity matures collect 100")
             player.moneyIn(100)
@@ -333,7 +487,7 @@ class cell:
         # draw a card
         card = state.board.chanceCards.pop(0)
 
-        # auctions
+        # actions
         if card == 0:
             game_output("Take a trip to Marylebone Station. Get 200 if you pass go")
             if player.position > 15:
@@ -439,7 +593,20 @@ class Property:
                 game_output(player.name + " buy " + self.name)
                 state.board.recalculateChanges()
             else:
-                game_output(player.name + " can't buy " + self.name)
+                game_output(player.name + " does not have money to buy " + self.name)
+                # to avoid biding of stations and utilities
+                # deferent mechanism is required for stations and utilities
+                if self.type == "property":
+                    game_output("start auction")
+                    # state.output_state()
+                    # playersBidOrder = state.players[state.players.index(player):] + state.players[:state.players.index(player)]
+                    # bidder, bid = self.auction(state, self.price/2, playersBidOrder)
+                    # bidder.moneyOut(bid, state)
+                    # self.owner = bidder
+                    # game_output(bidder.name + " wins the auction of " + self.name)
+                    # state.board.recalculateChanges()
+
+
 
         # pay rent
         else:
@@ -449,6 +616,56 @@ class Property:
                 money_taken = player.moneyOut(rent, state)
                 self.owner.moneyIn(money_taken)
                 game_output(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
+
+    def auction(self, state, bid, players):
+        player = players[0]
+        if len(players) == 1:
+            return (player, bid)
+        if player.money <= bid:
+            game_output(player.name, " does not have enough money to bid")
+            return self.auction(state, bid, players[1:])
+        # player current state and result
+        playerCurrentStateResult = player.strategy.heuristic(player, state)
+        # player auction state and result
+        playerAuctionStateResult = self.stateOfAuction(state, player, bid)
+        # playerAuctionState, bidder = self.stateOfAuction(state, player, bid)
+        # playerAuctionState.output_state()
+        # playerAuctionStateResult = player.strategy.heuristic(bidder, playerAuctionState)
+        
+        playerGain = playerAuctionStateResult - playerCurrentStateResult
+        ################# op
+        # opponents current states and results
+        opCurrentStateResults = [player.strategy.heuristic(op, state) for op in players[1:]]
+        # opponents auction states and results
+        opNewStateResults = [self.stateOfAuction(state, op, bid) for op in players[1:]] # return state and bidder
+        # for ss in opAuctionState[0]:
+        #     ss.output_state()
+        # opNewStateResults = [player.strategy.heuristic(opStates[1], opStates[0]) for opStates in opAuctionState]
+
+        opponentsGains = [opNewStateResults[i] - opCurrentStateResults[i] for i in range(len(opCurrentStateResults))]
+        worstOpNewStateResult = min( opNewStateResults )
+        playersList = players[1:]
+        playersList.append(player)
+        # print(str(playerGain) + " " + str(opponentsGains))
+        ## make sure current bidder gain is higher than others
+        if playerAuctionStateResult > worstOpNewStateResult:
+            game_output( f'{playersList[0].name} bids {bid+1} for {self.name}.')
+            return self.auction( state, bid+1, playersList)
+        else:
+            game_output( player.name, " passes.")
+            return self.auction( state, bid+1, playersList[:-1])
+
+    def stateOfAuction(self, state, player, bid):
+        self.owner = player
+        # player.moneyOut(bid, state)
+        state.board.recalculateChanges()
+        result = player.strategy.heuristic(player, state)
+        self.owner = ""
+        player.moneyIn(bid)
+        state.board.recalculateChanges()
+        return result
+
+
 
 
 class Board:
@@ -595,10 +812,6 @@ class Board:
         # get the index of hights value state
         maxValueState = resultsOfBuilding.index(max(resultsOfBuilding))
         
-        if resultsOfBuilding[maxValueState] - resultOfCurrentState < player.strategy.build_margin:
-            game_output(f'Refuse to build, less that build gain')
-            return False
-        
         targetProp = propertiesToBuild[maxValueState]
         targetProp.houses += 1
 
@@ -656,13 +869,30 @@ class Board:
         return ownedProperties / propertiesCount
     
     def totalShares(self, player):
-        totalCount = 0
+        totalCount = Fraction(0)
         for prop in self.monopoly_board:
             if prop.type == "property" and prop.owner != "" and prop.owner.name == player.name:
                 totalCount += prop.groupShare
         
         return totalCount
-
+    
+    # this calculate total cost and total rent return
+    # it has been created for the whole set not individual properties
+    def propertiesRentReturn(self, player):
+        tPropEvaluation = 0
+        for prop in self.monopoly_board:
+            propEvaluation = 0
+            if prop.type == "property" and prop.owner != "" and prop.owner == player:
+                for n in prop.neighbors:
+                    propEvaluation += n.rent_price[5] / (n.house_price*5)
+                setSize = len(prop.neighbors)+1
+                propEvaluation += prop.rent_price[5] / (prop.house_price*5)
+                if prop.groupShare == 1:
+                    tPropEvaluation += round(propEvaluation/setSize*6,3)
+                else:
+                    tPropEvaluation += round((propEvaluation/setSize)*(prop.groupShare*3 if prop.group not in ["brown","dark blue"] else prop.groupShare*2),2)
+            tPropEvaluation += propEvaluation
+        return tPropEvaluation
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
         self.isSets()
@@ -690,7 +920,6 @@ class GameState:
     @staticmethod
     def startState(players):
         starting = GameState()
-        # starting.game = game
         starting.board = Board()
         starting.players = copy.deepcopy(players)
         starting.round = 0
@@ -699,7 +928,6 @@ class GameState:
     
     def newState(self):
         newState = GameState()
-        # newState.game = copy.deepcopy(self.game)
         newState.board = copy.deepcopy(self.board)
         newState.players = copy.deepcopy(self.players)
         newState.round = copy.deepcopy(self.round)
@@ -723,8 +951,13 @@ class Game:
     def __init__(self, players, max_rounds):
         self.max_rounds = max_rounds
         self.state = GameState.startState(players)
+        self.rounds = 0
 
     def play(self):
+        for player in self.state.players:
+            for op in self.state.players:
+                if player != op:
+                    player.opponents.append(op)
         global GAME_OUTPUT
         playing = True
         while playing:
@@ -749,28 +982,36 @@ class Game:
             self.state.round += 1
 
 class Strategy:
-    def __init__(self, mv, rr, ct, cp, dp, bm, pgs):
-        self.money_value = mv              # how the player value money
-        self.rent_return = rr              # total paid comparing the the rent return
+    def __init__(self, rr, opmv, oprr, ct, cp, dp, pe, buym, sellm):
+        self.rent_return = rr              # positive multiplier of total rent return
+        self.opponent_money_value = opmv   # negative multiplier of total opponents' money
+        self.opponent_rent_return = oprr   # negative multiplier of total opponents' rent return
         self.cash_threshold = ct           # minimum cash the player should have
         self.cash_penalty = cp             # negative applied if money lower than cash threshold
         self.deadly_properties = dp        # negative value applied to the number of deadly spaces
-        self.build_margin = bm             # gain in heuristic required to build property
-        self.property_group_share = pgs    # positive multiplier for the group shares in the board
+        self.properties_evaluation = pe    # positive multiplier for total properties evaluation
+        self.buy_margin = buym             # heuristic gain to buy property
+        self.sell_margin = sellm           # heuristic gain to sell property
           
     def heuristic(self, player, state):
-        value =  player.money * self.money_value #the value of money comparing to threshold
+        value =  player.money
         value += state.board.totalRent(player) * self.rent_return
 
-        value -= state.board.dangerousProperties(player) * self.deadly_properties
-        if (player.money < self.cash_threshold):
-            value -= self.cash_penalty
+        value -= sum( [opponent.money for opponent in player.opponents] ) * self.opponent_money_value
+        value -= sum( [state.board.totalRent(opponent) for opponent in player.opponents] ) * self.opponent_rent_return
 
-        value += state.board.totalShares(player) * self.property_group_share
+        if (player.money < self.cash_threshold):
+            value -= self.cash_penalty * (1-(player.money/self.cash_threshold))
+
+        value -= state.board.dangerousProperties(player) * self.deadly_properties
+
+        value += state.board.propertiesRentReturn(player) * self.properties_evaluation
+
         return value
 
 
-def test_series(players, max_rounds, game_num, output):
+
+def testSeries(players, max_rounds, game_num, output):
     global GAME_OUTPUT
     wins = {}
     game_played = 0
@@ -795,7 +1036,14 @@ def test_series(players, max_rounds, game_num, output):
                     game_output(f'{x.name:21} | {x.houses} | {x.owner.name:5} | {round(float(x.groupShare),2):2}')
                 else:
                     game_output(f'{x.name:21} | {x.houses} | {x.owner:5} | {round(float(x.groupShare),2):2}')
-    return wins
+    
+    
+    print("PLAYER     WINS  PERCENT  |   RM  OPM  OPR   BM  SM   RES  RPEN   JEPAV")
+    for player in players:
+        games_won = wins[player.name]
+        percentage = round((games_won/game_num)*100,2)
+        strategy = player.strategy
+        print(f'{player.name:<6} {games_won:<4} {percentage:<5}%')
 
 global GAME_OUTPUT
 GAME_OUTPUT = True
@@ -804,31 +1052,66 @@ def game_output(*args, end="\n"):
        print(*args, end=end)
 
 
-# self.money_value = mv              # how the player value money
-# self.rent_multi = rm               # positive rent return multiplier of property
-# self.rent_return = rr              # total paid comparing the the rent return
+
+# self.rent_return = rr              # positive multiplier of total rent return
+# self.opponent_money_value = opmv   # negative multiplier of total opponents' money
+# self.opponent_rent_return = oprr   # negative multiplier of total opponents' rent return
 # self.cash_threshold = ct           # minimum cash the player should have
 # self.cash_penalty = cp             # negative applied if money lower than cash threshold
 # self.deadly_properties = dp        # negative value applied to the number of deadly spaces
-    
-s1 = Strategy(0.4, 2, 500, 500, 1, 50, 1)
-s2 = Strategy(1, 10, 500, 500, 1, 50, 1)
-s3 = Strategy(0.5, 10, 500, 500, 1, 50, 1)
-s4 = Strategy(0.0, 7, 500, 500, 1, 50, 1)
+# self.buy_margin = buym
+# self.sell_margin = sellm
+
+s1 = Strategy(3, 0, 0.5, 0, 500, 2000, 3, 200, 200)
+s2 = Strategy(8, 0, 0.5, 0, 500, 2000, 0, 200, 200)
+s3 = Strategy(7, 0.3, 0.3, 100, 5000, 20000, 8, 80, 80)
+s4 = Strategy(9, 0.2, 0.2, 0, 5000, 20000, 10, 150, 150)
 
 a = Player("Alex", s1)
-b = Player("Bop", s1)
-c = Player("Alice", s2)
-d = Player("Said", s2)
+b = Player("Bop", s2)
+c = Player("Alice", s1)
+d = Player("Said", s1)
 
-players = [a, b, c, d]
+players = [a, b]
 start = time.time()
-print(test_series(players, 200, 100, output=False))
+print(testSeries(players, 200, 200, output=False))
 end = time.time()
 print(end-start)
 
 
 # game = Board()
+# z = True
+# for x in game.monopoly_board:
+#     if x.type == "property":
+#         # if z:
+#         x.owner = a
+#         #     z = False
+#         # else:
+#         #     z = True
+# game.isSets()
+# playerCashScore = a.money * 0.01
+# tPropEvaluation = 0
+# for prop in game.monopoly_board:
+#     propEvaluation = 0
+#     if prop.type == "property" and prop.owner != "" and prop.owner == a:
+#         for n in prop.neighbors:
+#             propEvaluation += n.rent_price[5] / (n.house_price*5)
+#         setSize = len(prop.neighbors)+1
+#         propEvaluation += prop.rent_price[5] / (prop.house_price*5)
+#         # if prop.groupShare == 1:
+#         #     tPropEvaluation = round(propEvaluation/setSize*6,3)
+#         #     print(f'{prop.name:21} value {tPropEvaluation}')
+#         # else:
+#         # tPropEvaluation = round((propEvaluation/setSize)*(prop.groupShare*3 if prop.group not in ["brown","dark blue"] else prop.groupShare*2),2)
+#         one =  round((propEvaluation/setSize)*(1 if prop.group not in ["brown","dark blue"] else 1),2)
+#         two =  round((propEvaluation/setSize)*(2 if prop.group not in ["brown","dark blue"] else 6),2)
+#         three =  round((propEvaluation/setSize)*(6 if prop.group not in ["brown","dark blue"] else 0),2)
+#         print(f'{prop.name:21}| {one:5} | {two:5} | {three:5}')
+
+#     tPropEvaluation += propEvaluation
+
+# print(tPropEvaluation)
+
 # for x in game.monopoly_board:
 #     if type(x) == Property:
 #         for y in x.neighbors:
@@ -871,3 +1154,11 @@ print(end-start)
 # {'Said': 26, 'Bop': 46, 'Alex': 11, 'Alice': 17}
 # {'Bop': 45, 'Alice': 17, 'Said': 16, 'Alex': 22}
 # {'Said': 36, 'Bop': 15, 'Alice': 37, 'Alex': 12}
+# {'Alice': 31, 'Said': 36, 'Bop': 18, 'Alex': 15}
+# {'Alex': 66, 'Alice': 191, 'Said': 174, 'Bop': 69}
+# ({'Said': 32, 'Bop': 22, 'Alice': 22, 'Alex': 24}, 47.46)
+# ({'Alex': 22, 'Alice': 21, 'Said': 34, 'Bop': 23}, 57.5)
+
+
+# s1 = Strategy(3, 0, 0.5, 0, 500, 2000, 5, 200, 200) 40%
+# s2 = Strategy(8, 0, 0.5, 0, 500, 2000, 1, 200, 200) 60%
