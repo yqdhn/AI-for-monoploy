@@ -48,14 +48,9 @@ class Player:
         if not self.alive:
             return False
 
-        # state.board.recalculateChanges()
-
         ## check if there is a property to un mortgage
         while self.unMortgage(state):
             pass
-
-        # check all possible states of trading
-        # self.tradeProperty(state)
 
         # buy property (based on gain player get)
         self.buyProperty(state)
@@ -128,8 +123,10 @@ class Player:
             possibleStatesOfMortgage, propertiesToMortgage = [], []
             for prop in playerProperties:
                 if not prop.isMortgaged:
-                    possibleStatesOfMortgage.append(self.stateOfMortgage(state, prop))
-                    propertiesToMortgage.append(prop)
+                    Mortgage = self.stateOfMortgage(state, prop)
+                    if Mortgage != None:
+                        possibleStatesOfMortgage.append(Mortgage)
+                        propertiesToMortgage.append(prop)
 
             #there is no property to mortgage
             if len(possibleStatesOfMortgage) == 0:
@@ -148,25 +145,36 @@ class Player:
             chosenProperty = propertiesToMortgage[maxValueState]
             ## sell houses
             if chosenProperty.houses > 0:
+                game_output(f'{self.name} sold house from {chosenProperty.name}')
                 self.moneyIn(int(chosenProperty.house_price/2))
                 chosenProperty.houses -= 1
             else:
                 chosenProperty.isMortgaged = True
+                game_output(f'{self.name} mortgage {chosenProperty.name}')
                 self.moneyIn(int(chosenProperty.price/2))
 
             state.board.recalculateChanges()
 
     def stateOfMortgage(self, state, space):
+        global GAME_OUTPUT
+        current = GAME_OUTPUT
+        GAME_OUTPUT = False
         newState = state.newState()
         prop = newState.board.monopoly_board[state.board.monopoly_board.index(space)]
-        ## sell houses
+       
         if prop.houses > 0:
+            ## sell houses
             newState.players[state.players.index(self)].moneyIn(int(prop.house_price/2))
             prop.houses -= 1
         else:
+            for n in prop.neighbors:
+                if n.houses > 0:
+                    return
+            # Mortgage property
             prop.isMortgaged = True
             newState.players[state.players.index(self)].moneyIn(int(prop.price/2))
         newState.board.recalculateChanges()
+        GAME_OUTPUT = current
         return newState
 
     def unMortgage(self, state):
@@ -188,17 +196,24 @@ class Player:
         chosenProperty = propertiesToUnMortgage[maxValueState]
 
         chosenProperty.isMortgaged = False
+        game_output(f'{self.name} unmortgage {chosenProperty.name}')
         self.moneyOut(int(chosenProperty.price/2), state)
         state.board.recalculateChanges()
     
         return True
 
     def stateOfUnMortgage(self, state, space):
+        global GAME_OUTPUT
+        current = GAME_OUTPUT
+        GAME_OUTPUT = False
         newState = state.newState()
+        # set property to not Mortgaged
         prop = newState.board.monopoly_board[state.board.monopoly_board.index(space)]
         prop.isMortgaged = False
+        # take money from player
         newState.players[state.players.index(self)].moneyOut(int(prop.price/2), newState)
         newState.board.recalculateChanges()
+        GAME_OUTPUT = current
         return newState
     
     ## this functions allow player in his turn to check if he  
@@ -218,7 +233,7 @@ class Player:
             return
         
         for property, price in buyingPropAndPrice:
-            game_output(f'{self.name:6}:{self.money:6} offers £{price} for {property.name}:{property.owner.name}.')
+            game_output(f'{self.name:6} offers {price} for {property.name}.')
 
 
         acceptedOffers = []
@@ -249,8 +264,8 @@ class Player:
     def buyingPriceWithinMargin(self, state, op, wantProp, targetValue):
         # If player pay nothing, is the property useful for him
         # to make sure getting this property meet the margin
-        BuyResultWithZero = self.buyStateResult(state, op, wantProp, wantProp.price/2)
-        if BuyResultWithZero >= targetValue:
+        halfPricePropHeuristicValue = self.buyStateResult(state, op, wantProp, wantProp.price/2)
+        if halfPricePropHeuristicValue >= targetValue:
             low = 0
             high = self.money 
             while low + 1 < high:
@@ -266,6 +281,10 @@ class Player:
         return None
 
     def buyStateResult(self, state, seller, buyProp, cost):
+        global GAME_OUTPUT
+        current = GAME_OUTPUT
+        GAME_OUTPUT = False
+        
         buyProp.owner = self
         self.moneyOut(cost, state)
         seller.moneyIn(cost)
@@ -276,9 +295,14 @@ class Player:
         self.moneyIn(cost)
         seller.moneyOut(cost, state)
         state.board.recalculateChanges()
+        GAME_OUTPUT = current
         return result
     
     def sellStateResult(self, state, buyer, sellProp, cost):
+        global GAME_OUTPUT
+        current = GAME_OUTPUT
+        GAME_OUTPUT = False
+        
         sellProp.owner = buyer
         buyer.moneyOut(cost, state)
         self.moneyIn(cost)
@@ -289,6 +313,7 @@ class Player:
         buyer.moneyIn(cost)
         self.moneyOut(cost, state)
         state.board.recalculateChanges()
+        GAME_OUTPUT = current
         return result
 
 
@@ -598,13 +623,13 @@ class Property:
                 # deferent mechanism is required for stations and utilities
                 if self.type == "property":
                     game_output("start auction")
-                    # state.output_state()
-                    # playersBidOrder = state.players[state.players.index(player):] + state.players[:state.players.index(player)]
-                    # bidder, bid = self.auction(state, self.price/2, playersBidOrder)
-                    # bidder.moneyOut(bid, state)
-                    # self.owner = bidder
-                    # game_output(bidder.name + " wins the auction of " + self.name)
-                    # state.board.recalculateChanges()
+                    state.output_state()
+                    playersBidOrder = state.players[state.players.index(player):] + state.players[:state.players.index(player)]
+                    bidder, bid = self.auction(state, self.price/2, playersBidOrder)
+                    bidder.moneyOut(bid, state)
+                    self.owner = bidder
+                    game_output(bidder.name + " wins the auction of " + self.name)
+                    state.board.recalculateChanges()
 
 
 
@@ -624,23 +649,17 @@ class Property:
         if player.money <= bid:
             game_output(player.name, " does not have enough money to bid")
             return self.auction(state, bid, players[1:])
-        # player current state and result
+        # player current heuristic value
         playerCurrentStateResult = player.strategy.heuristic(player, state)
-        # player auction state and result
+        # player auction heuristic value
         playerAuctionStateResult = self.stateOfAuction(state, player, bid)
-        # playerAuctionState, bidder = self.stateOfAuction(state, player, bid)
-        # playerAuctionState.output_state()
-        # playerAuctionStateResult = player.strategy.heuristic(bidder, playerAuctionState)
         
         playerGain = playerAuctionStateResult - playerCurrentStateResult
         ################# op
-        # opponents current states and results
+        # opponents current heuristic value
         opCurrentStateResults = [player.strategy.heuristic(op, state) for op in players[1:]]
-        # opponents auction states and results
+        # opponents auction heuristic value
         opNewStateResults = [self.stateOfAuction(state, op, bid) for op in players[1:]] # return state and bidder
-        # for ss in opAuctionState[0]:
-        #     ss.output_state()
-        # opNewStateResults = [player.strategy.heuristic(opStates[1], opStates[0]) for opStates in opAuctionState]
 
         opponentsGains = [opNewStateResults[i] - opCurrentStateResults[i] for i in range(len(opCurrentStateResults))]
         worstOpNewStateResult = min( opNewStateResults )
@@ -804,7 +823,7 @@ class Board:
             game_output(f'There is nothing to build')
             return False
         
-        resultOfCurrentState = player.strategy.heuristic(player, state)
+        # resultOfCurrentState = player.strategy.heuristic(player, state)
         resultsOfBuilding = [
             player.strategy.heuristic(stateOfBuilding.players[state.players.index(player)], stateOfBuilding)
             for stateOfBuilding in possibleStatesOfBuilding]
@@ -822,6 +841,9 @@ class Board:
         return True
         
     def stateOfBuilding(self, state, player, space):
+        global GAME_OUTPUT
+        current = GAME_OUTPUT
+        GAME_OUTPUT = False
         # Create a new state
         new_state = state.newState()
 
@@ -834,6 +856,7 @@ class Board:
         targetPlayer.moneyOut(targetProp.house_price, new_state)
 
         new_state.board.recalculateChanges()
+        GAME_OUTPUT = current
         return new_state
     
     ## return all properties to the game (if player lost)
@@ -935,17 +958,17 @@ class GameState:
         return newState
        
     def output_state(self):
-        print(f'name |money|po')
+        game_output(f'name |money  |position')
         for player in self.players:
-            print(f'{player.name:5}|{player.money:5}|{player.position:2}')
+            game_output(f'{player.name:5}|{player.money:7}|{player.position:2}')
         
-        print(f'property:                |owner|groupShare')
+        game_output(f'property name            | rent | houses | owner | isMortgaged |groupShare ')
         for prop in self.board.monopoly_board:
-            if prop.type == "property":
+            if prop.type in ["property", "station"]:
                 if prop.owner != "":
-                    print(f'{prop.name:25}|{prop.owner.name:5}|{round(float(prop.groupShare),3):2}')
+                    game_output(f'{prop.name:24} | {self.board.calculateRent(prop):^4} | {prop.houses:^6} | {prop.owner.name:^5} | {prop.isMortgaged:^11} | {round(float(prop.groupShare),2):2}')
                 else:
-                    print(f'{prop.name:25}|{prop.owner:5}|{round(float(prop.groupShare),3):2}')
+                    game_output(f'{prop.name:24} | {self.board.calculateRent(prop):^4} | {prop.houses:^6} | {prop.owner:^5} | {prop.isMortgaged:^11} | {round(float(prop.groupShare),2):2}')
 
 class Game:
     def __init__(self, players, max_rounds):
@@ -961,15 +984,17 @@ class Game:
         global GAME_OUTPUT
         playing = True
         while playing:
+            game_output(f'Round {self.state.round}:')
             for player in self.state.players:
-                # player.strategy.heuristic(player, self.state)
+                game_output(f'{player.name:} turn:')
                 player.makeAMove(self.state)
-                game_output("")
+                game_output(f'')
                 if self.state.board.gameOver(self.state.players):
                     playing = False
                     GAME_OUTPUT = True
                     for player in self.state.players:
                         if player.alive:
+                            game_output(f'\n############# End of the game #############')
                             game_output(f'Number of rounds is {self.state.round}')
                             game_output(player.name + " is the winner.\n")
                             return player.name
@@ -977,9 +1002,11 @@ class Game:
             if self.state.round > self.max_rounds:
                 playing = False
                 GAME_OUTPUT = True
+                game_output(f'\n############# End of the game #############')
                 game_output("number of rounds exceeded\n")
                 return False
-            self.state.round += 1
+            self.state.output_state()
+            self.state.round += 1      
 
 class Strategy:
     def __init__(self, rr, opmv, oprr, ct, cp, dp, pe, buym, sellm):
@@ -1014,6 +1041,8 @@ class Strategy:
 def testSeries(players, max_rounds, game_num, output):
     global GAME_OUTPUT
     wins = {}
+    for player in players:
+        wins[player.name] = 0
     game_played = 0
     while game_played < game_num:
         game_output(f'\n\nGame {game_played+1}:')
@@ -1022,20 +1051,10 @@ def testSeries(players, max_rounds, game_num, output):
         game = Game( players, max_rounds )
         winner = game.play()
         if winner != False:
-            if winner not in wins:
-                wins[winner] = 0
             wins[winner] = wins.get(winner) + 1
             game_played += 1
 
-        for player in game.state.players:
-            game_output(f'{player.name:6} have {player.money}')
-
-        for x in game.state.board.monopoly_board:
-            if x.type == "property":
-                if x.owner != "":
-                    game_output(f'{x.name:21} | {x.houses} | {x.owner.name:5} | {round(float(x.groupShare),2):2}')
-                else:
-                    game_output(f'{x.name:21} | {x.houses} | {x.owner:5} | {round(float(x.groupShare),2):2}')
+        game.state.output_state()
     
     
     print("PLAYER     WINS  PERCENT  |   RM  OPM  OPR   BM  SM   RES  RPEN   JEPAV")
@@ -1062,21 +1081,21 @@ def game_output(*args, end="\n"):
 # self.buy_margin = buym
 # self.sell_margin = sellm
 
-s1 = Strategy(3, 0, 0.5, 0, 500, 2000, 3, 200, 200)
-s2 = Strategy(8, 0, 0.5, 0, 500, 2000, 0, 200, 200)
-s3 = Strategy(7, 0.3, 0.3, 100, 5000, 20000, 8, 80, 80)
-s4 = Strategy(9, 0.2, 0.2, 0, 5000, 20000, 10, 150, 150)
+s1 = Strategy(5, 0, 0.5, 0, 500, 2000, 0, 200, 200)
+s2 = Strategy(5, 0, 0.5, 0, 500, 2000, 2, 200, 200)
+s3 = Strategy(5, 0, 0.5, 0, 500, 2000, 4, 200, 200)
+s4 = Strategy(5, 0, 0.5, 0, 500, 2000, 6, 200, 200)
 
 a = Player("Alex", s1)
 b = Player("Bop", s2)
-c = Player("Alice", s1)
-d = Player("Said", s1)
+c = Player("Alice", s3)
+d = Player("Said", s4)
 
-players = [a, b]
+players = [a, b, c, d]
 start = time.time()
-print(testSeries(players, 200, 200, output=False))
+testSeries(players, 200, 1, output=True)
 end = time.time()
-print(end-start)
+print(round((end-start)/60,2))
 
 
 # game = Board()
