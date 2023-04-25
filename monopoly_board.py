@@ -2,6 +2,7 @@ import random
 import copy
 from fractions import Fraction
 import time
+import math
 
 global stut
 
@@ -717,8 +718,13 @@ class Board:
                 and prop.houses < 5 \
                 and prop.house_price <= player.money:
                 
-                propertiesToBuild.append(prop)
-                possibleStatesOfBuilding.append(self.stateOfBuilding(state, player, prop))
+                # make sure there is one house difference in any set
+                housesInSet = prop.houses
+                housesInSet += sum([housesInSet.houses for housesInSet in prop.neighbors])
+                maxInProp = min((math.ceil(housesInSet / (len(prop.neighbors)+1) + 0.1)), 5)
+                if prop.houses < maxInProp:
+                    propertiesToBuild.append(prop)
+                    possibleStatesOfBuilding.append(self.stateOfBuilding(state, player, prop))
         
         #there is no property to build
         if len(possibleStatesOfBuilding) == 0:
@@ -875,7 +881,6 @@ class Game:
                 game_output(f'')
                 if self.state.board.gameOver(self.state.players):
                     playing = False
-                    GAME_OUTPUT = True
                     for player in self.state.players:
                         if player.alive:
                             game_output(f'Number of rounds is {self.state.round}')
@@ -884,7 +889,6 @@ class Game:
                     break
             if self.state.round > self.max_rounds:
                 playing = False
-                GAME_OUTPUT = True
                 game_output("number of rounds exceeded\n")
                 return False
             self.state.output_state()
@@ -924,19 +928,21 @@ def testSeries(players, max_rounds, game_num, output):
     wins = {}
     for player in players:
         wins[player.name] = 0
-    game_played = 0
+    game_played, progress = 0, 1
+    print("test started ...")
     while game_played < game_num:
-        game_output(f'\n\nGame {game_played+1}:')
         GAME_OUTPUT = output
+        game_output(f'\n\nGame {game_played+1}:')
         random.shuffle(players)
         game = Game( players, max_rounds )
         winner = game.play()
         if winner != False:
             wins[winner] = wins.get(winner) + 1
             game_played += 1
-
-        game.state.output_state()
-        game_output(f'\n############# End of the game #############\n')
+            if game_played == game_num/10*progress:
+                per = game_played/game_num*100
+                print(f'test progress {int(per)}%')
+                progress += 1
     
     
     print("PLAYER   | WINS | PERCENT  ")
@@ -975,7 +981,7 @@ d = Player("Said", s4)
 
 players = [a, b, c, d]
 start = time.time()
-testSeries(players, 200, 200, output=True)
+testSeries(players, 200, 500, output=False)
 end = time.time()
 print(round((end-start)/60,2))
 
