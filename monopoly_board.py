@@ -524,7 +524,7 @@ class Property:
                     bidder, bid = self.auction(state, self.price/2, playersBidOrder)
                     bidder.moneyOut(bid, state)
                     self.owner = bidder
-                    game_output(bidder.name + " wins the auction of " + self.name)
+                    game_output(f'{bidder.name} wins the auction of {self.name}, paid {bid}')
                     state.board.recalculateChanges()
 
         # pay rent
@@ -536,39 +536,36 @@ class Property:
                 self.owner.moneyIn(money_taken)
                 game_output(player.name + " pays " + str(money_taken) + " to " + self.owner.name + " for " + self.name)
 
-
     def auction(self, state, bid, players):
-        player = players[0]
-        if len(players) == 1:
-            return (player, bid)
-        if player.money <= bid:
-            game_output(player.name, " does not have enough money to bid")
-            return self.auction(state, bid, players[1:])
-        # player current heuristic value
-        playerCurrentStateResult = player.strategy.heuristic(player, state)
-        # player auction heuristic value
-        playerAuctionStateResult = self.stateOfAuction(state, player, bid)
-        
-        playerGain = playerAuctionStateResult - playerCurrentStateResult
-        ################# op
-        # opponents current heuristic value
-        opCurrentStateResults = [player.strategy.heuristic(op, state) for op in players[1:]]
-        # opponents auction heuristic value
-        opNewStateResults = [self.stateOfAuction(state, op, bid) for op in players[1:]] # return state and bidder
+        while len(players) > 1:
+            player = players[0]
+            if player.money <= bid:
+                game_output(player.name, " does not have enough money to bid")
+                players.pop(0)
+                continue
+            # player current and auction heuristic value
+            playerCurrentStateResult = player.strategy.heuristic(player, state)
+            playerAuctionStateResult = self.stateOfAuction(state, player, bid)
+            playerGain = playerAuctionStateResult - playerCurrentStateResult
+            
+            # opponents current and auction heuristic value
+            opCurrentStateResults = [player.strategy.heuristic(op, state) for op in players[1:]]
+            opNewStateResults = [self.stateOfAuction(state, op, bid) for op in players[1:]]
+            opponentsGains = [opNewStateResults[i] - opCurrentStateResults[i] for i in range(len(opCurrentStateResults))]
+            worstOpNewStateResult = min(opponentsGains)
 
-        opponentsGains = [opNewStateResults[i] - opCurrentStateResults[i] for i in range(len(opCurrentStateResults))]
-        worstOpNewStateResult = min( opponentsGains )
-        # make sure current bidder gain is higher than worst op
-        # based on player strategy
-        if playerGain > worstOpNewStateResult:
-            # next player bidding
-            playersList = players[1:]
-            playersList.append(player)
-            game_output( f'{player.name} bids {(bid+1)} for {self.name}.')
-            return self.auction( state, bid+1, playersList)
-        else:
-            game_output( player.name, " passes.")
-            return self.auction( state, bid+1, players[1:])
+            # make sure current bidder gain is higher than worst op
+            # based on player strategy
+            if playerGain > worstOpNewStateResult:
+                # next player bidding
+                game_output(f'{player.name} bids {(bid+1)} for {self.name}.')
+                players.append(players.pop(0))
+                bid += 1
+            else:
+                game_output(player.name, " passes.")
+                players.pop(0)
+
+        return (players[0], bid)
 
     # some issues occur when create a new state
     # that's why it is missy and I just modify current state
@@ -576,7 +573,7 @@ class Property:
         global GAME_OUTPUT
         current = GAME_OUTPUT
         GAME_OUTPUT = False
-    
+
         self.owner = player
         player.moneyOut(bid, state)
         state.board.recalculateChanges()
@@ -929,7 +926,7 @@ def testSeries(players, max_rounds, game_num, output):
     for player in players:
         wins[player.name] = 0
     game_played, progress = 0, 1
-    print("test started ...")
+    print("test started\nprogress:")
     while game_played < game_num:
         GAME_OUTPUT = output
         game_output(f'\n\nGame {game_played+1}:')
@@ -939,12 +936,12 @@ def testSeries(players, max_rounds, game_num, output):
         if winner != False:
             wins[winner] = wins.get(winner) + 1
             game_played += 1
-            if game_played == game_num/10*progress:
+            if game_played == game_num/10*progress and output == False:
                 per = game_played/game_num*100
-                print(f'test progress {int(per)}%')
+                print(f'{int(per)}%', end='\r')
                 progress += 1
     
-    
+    print('\n')
     print("PLAYER   | WINS | PERCENT  ")
     for player in players:
         games_won = wins[player.name]
@@ -969,19 +966,19 @@ def game_output(*args, end="\n"):
 # self.buy_margin = buym
 # self.sell_margin = sellm
 
-s1 = Strategy(5, 0, 0.5, 0, 500, 2000, 0, 200, 200)
-s2 = Strategy(5, 0, 0.5, 0, 500, 2000, 5, 200, 200)
-s3 = Strategy(5, 0, 0.5, 0, 500, 2000, 10, 200, 200)
-s4 = Strategy(5, 0, 0.5, 0, 500, 2000, 15, 200, 200)
+s1 = Strategy(10, 1, 1, 100, 500, 1000, 0, 150, 150) #investor
+s2 = Strategy(5, 0, 0.7, 500, 1000, 5000, 0, 100, 200) # greedy
+s3 = Strategy(10, 0, 0.7, 500, 100, 1000, 0, 100, 200)
+s4 = Strategy(5, 1, 1, 100, 500, 5000, 0, 150, 150)
 
-a = Player("Alex", s1)
-b = Player("Bop", s2)
-c = Player("Alice", s3)
-d = Player("Said", s4)
+a = Player("s1", s1)
+b = Player("s2", s2)
+c = Player("s3", s3)
+d = Player("s4", s4)
 
 players = [a, b, c, d]
 start = time.time()
-testSeries(players, 200, 500, output=False)
+testSeries(players, 200, 10, output=False)
 end = time.time()
 print(round((end-start)/60,2))
 
@@ -1018,51 +1015,3 @@ print(round((end-start)/60,2))
 #     tPropEvaluation += propEvaluation
 
 # print(tPropEvaluation)
-
-# for x in game.monopoly_board:
-#     if type(x) == Property:
-#         for y in x.neighbors:
-#             print(y.name+",", end='')
-#         print("")
-
-# y = False
-# for x in game.monopoly_board:
-#     if type(x) == Property and y:
-#         x.owner = a
-#         y = False
-#     else:
-#         x.owner = b
-#         y = True
-
-# for x in game.monopoly_board:
-#     if type(x) == Property:
-#         print(x.name + ": " + str(x.groupShare) + " "+  x.owner.name )
-
-# players = [a]
-# game = Game( players, 500 )
-
-# for x in game.state.board.monopoly_board:
-#     if type(x) == Property:
-#         a.moveTo(game.state.board.monopoly_board.index(x), game.state)
-#         print(f'{x.name:25}: {round(a.strategy.heuristic(a,game.state),4):6} m:{a.money}')
-
-# print()
-# players = [b]
-# game = Game( players, 500 )
-# for x in game.state.board.monopoly_board:
-#     if type(x) == Property:
-#         b.moveTo(game.state.board.monopoly_board.index(x), game.state)
-#         print(f'{x.name:25}: {round(b.strategy.heuristic(b,game.state),4):6} m:{b.money}')
-
-# {'Bop': 56, 'Alex': 12, None: 5, 'Alice': 13, 'Said': 14}
-# {'Said': 26, 'Bop': 46, 'Alex': 11, 'Alice': 17}
-# {'Bop': 45, 'Alice': 17, 'Said': 16, 'Alex': 22}
-# {'Said': 36, 'Bop': 15, 'Alice': 37, 'Alex': 12}
-# {'Alice': 31, 'Said': 36, 'Bop': 18, 'Alex': 15}
-# {'Alex': 66, 'Alice': 191, 'Said': 174, 'Bop': 69}
-# ({'Said': 32, 'Bop': 22, 'Alice': 22, 'Alex': 24}, 47.46)
-# ({'Alex': 22, 'Alice': 21, 'Said': 34, 'Bop': 23}, 57.5)
-
-
-# s1 = Strategy(3, 0, 0.5, 0, 500, 2000, 5, 200, 200) 40%
-# s2 = Strategy(8, 0, 0.5, 0, 500, 2000, 1, 200, 200) 60%
