@@ -1083,7 +1083,7 @@ def random_strategies(players, max_rounds, game_num, iterations):
 
 start = time.time()
 iterations = 100
-random_strategies(players, 150, 1, iterations)
+random_strategies(players, 150, 1000, iterations)
 end = time.time()
 print(round((end-start)/60,2))
 
