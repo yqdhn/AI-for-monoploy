@@ -1037,6 +1037,57 @@ start = time.time()
 end = time.time()
 print(round((end-start)/60,2))
 
+################## random generated strategies
+s1 = Strategy(13, 0.2, 00.8, 44, 915, 4563, 0, 0, 168, 284)
+s2 = Strategy(7, 0.2, 1, 29, 605, 6123, 0, 0, 158, 187)
+s3 = Strategy(5, 0, 0.3, 16, 395, 1292, 0, 0, 242, 231)
+s4 = Strategy(0, 8, 5, 2, 6, 500, 0, 0, 50, 250)
+
+a = Player("Player1", s1)
+b = Player("Player2", s2)
+c = Player("Player3", s3)
+d = Player("Player4", s4)
+
+players = [a, b, c, d]
+
+def evaluate_strategy(players, max_rounds, game_num):
+    wins = testSeries(players, max_rounds, game_num, False)
+    # highest = max(wins, key=lambda key: wins[key])
+    lowest = min(wins, key=lambda key: wins[key])
+    lowestPlayer = None
+    for person in players:
+        if getattr(person, "name") == lowest:
+            lowestPlayer = person
+            break
+    return lowestPlayer
+        
+def generate_new_strategy():
+    rr = random.randint(5,15)
+    opm = round(random.uniform(0,1),1)
+    oprr = round(random.uniform(0,1),1)
+    ct = random.randint(0,500)
+    cp = random.randint(0,1000)
+    dp = random.randint(0,10000)
+    pe = random.randint(0,0)
+    pl = random.randint(0,0)
+    bm = random.randint(0,300)
+    sm = random.randint(0,300)
+    return Strategy(rr, opm, oprr, ct, cp, dp, pe, pl, bm, sm)
+
+def random_strategies(players, max_rounds, game_num, iterations):
+    newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+    for _ in range(iterations):
+        new_strategy = generate_new_strategy()
+        setattr(newLowestPlayer, "strategy", new_strategy)
+        newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+
+start = time.time()
+iterations = 100
+random_strategies(players, 150, 1, iterations)
+end = time.time()
+print(round((end-start)/60,2))
+
+
 ################## hill_climbing
 s1 = Strategy(13, 0.2, 00.8, 44, 915, 4563, 0, 0, 168, 284)
 s2 = Strategy(14, 0.2, 1, 29, 605, 6123, 0, 0, 158, 187)
@@ -1059,7 +1110,7 @@ def evaluate_strategy(players, max_rounds, game_num):
 def generate_new_strategy(changing_val):
     return Strategy(15, 0, 0, 0, 0, 9000, changing_val, 0, 50, 250)
 
-def random_strategies(players, max_rounds, game_num):
+def hill_climbing(players, max_rounds, game_num):
     newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
     changing_val = 0
     while changing_val < 10:
@@ -1069,56 +1120,6 @@ def random_strategies(players, max_rounds, game_num):
         newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
 
 start = time.time()
-# random_strategies(players, 150, 2000)
-end = time.time()
-print(round((end-start)/60,2))
-
-
-################## random generated strategies
-s1 = Strategy(13, 0.2, 00.8, 44, 915, 4563, 0, 0, 168, 284)
-s2 = Strategy(14, 0.2, 1, 29, 605, 6123, 0, 0, 158, 187)
-s3 = Strategy(12, 0, 0.3, 16, 395, 1292, 0, 0, 242, 231)
-s4 = Strategy(15, 0, 0, 0, 0, 9000, 0, 0, 50, 250)
-
-a = Player("Player1", s1)
-b = Player("Player2", s2)
-c = Player("Player3", s3)
-d = Player("Test", s4)
-
-players = [a, b, c, d]
-
-def evaluate_strategy(players, max_rounds, game_num):
-    wins = testSeries(players, max_rounds, game_num, False)
-    # highest = max(wins, key=lambda key: wins[key])
-    lowest = min(wins, key=lambda key: wins[key])
-    lowestPlayer = None
-    for person in players:
-        if getattr(person, "name") == lowest:
-            lowestPlayer = person
-            break
-    return lowestPlayer
-
-def generate_new_strategy():
-    rr = random.randint(5,15)
-    opm = round(random.uniform(0,1),1)
-    oprr = round(random.uniform(0,1),1)
-    ct = random.randint(0,500)
-    cp = random.randint(0,1000)
-    dp = random.randint(0,10000)
-    pe = random.randint(0,0)
-    pl = random.randint(0,0)
-    bm = random.randint(0,300)
-    sm = random.randint(0,300)
-    return Strategy(rr, opm, oprr, ct, cp, dp, pe, pl, bm, sm)
-
-def hill_climbing(players, max_rounds, game_num, iterations):
-    newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
-    for _ in range(iterations):
-        new_strategy = generate_new_strategy()
-        setattr(newLowestPlayer, "strategy", new_strategy)
-        newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
-
-start = time.time()
-# hill_climbing(players, 150, 250, 100)
+# hill_climbing(players, 150, 1000)
 end = time.time()
 print(round((end-start)/60,2))
