@@ -3,8 +3,10 @@ import copy
 from fractions import Fraction
 import time
 import math
+import csv
 
-global stut
+global propertiesLanding
+propertiesLanding = [0]*40
 
 class Player:
     def __init__(self, name, strategy):
@@ -41,10 +43,13 @@ class Player:
 
     # positions
     def moveTo(self, position, state):
+        global propertiesLanding
         self.position = position
+        propertiesLanding[self.position] += 1
         state.board.action(state, self)
 
     def makeAMove(self, state):
+        global propertiesLanding
         # player must be alive to play
         if not self.alive:
             return False
@@ -109,6 +114,8 @@ class Player:
 
         game_output(f'{self.name} new position is {state.board.monopoly_board[self.position].name}({self.position})')
         state.board.action(state, self)
+
+        propertiesLanding[self.position] += 1
 
         if playAgain:
             game_output(f'{self.name} plays again {dice1}={dice2}')
@@ -182,7 +189,10 @@ class Player:
         # find all possible state of UnMortgage
         possibleStatesOfUnMortgage, propertiesToUnMortgage = [], []
         for prop in state.board.monopoly_board:
-            if prop.type in ["property", "util", "station"] and prop.owner == self and prop.isMortgaged and prop.price/2 <= self.money:
+            if prop.type in ["property", "util", "station"]\
+                and prop.owner == self\
+                and prop.isMortgaged\
+                and prop.price/2 <= self.money-self.strategy.cash_threshold:
                 possibleStatesOfUnMortgage.append(self.stateOfUnMortgage(state, prop))
                 propertiesToUnMortgage.append(prop)
 
@@ -218,7 +228,7 @@ class Player:
         return newState
     
     ## this functions allow player in his turn to check if he  
-    ## wants to buy any available properties (owned buy others)
+    ## wants to buy any available properties (owned by others)
     ## player can buy if the buy gain higher than buy margin
     def buyProperty(self, state):
         buyingPropAndPrice = []
@@ -241,19 +251,20 @@ class Player:
         for property, price in buyingPropAndPrice:
             before = property.owner.strategy.heuristic(property.owner, state)
             after = property.owner.sellStateResult(state, self, property, price)
-            gain = after - before
-            if gain > property.owner.strategy.sell_margin:
-                acceptedOffers.append([property, price, gain])
-                before = property.owner.strategy.heuristic(property.owner, state)
-                after = property.owner.sellStateResult(state, self, property, price)
+            opponentsGain = after - before
+            if opponentsGain > property.owner.strategy.sell_margin:
+                playerBefore = self.strategy.heuristic(property.owner, state)
+                playerAfter = self.sellStateResult(state, self, property, price)
+                playerGain = playerAfter - playerBefore
+                acceptedOffers.append([property, price, playerGain])
             
         
         if acceptedOffers == []:
             game_output(self.name + "'s offers have been declined")
             return
         
-        acceptedOffers.sort(key=lambda gain: gain[2], reverse=True)
-        property, price, gain = acceptedOffers[0]
+        acceptedOffers.sort(key=lambda playerGain: playerGain[2], reverse=True)
+        property, price, playerGain = acceptedOffers[0]
         game_output(f'DEAL: {property.owner.name:6} sold {property.name:21} to {self.name:6} for {price}')
         paid = self.moneyOut(price, state)
         property.owner.moneyIn(paid)
@@ -266,7 +277,7 @@ class Player:
         # to make sure getting this property meet the margin
         halfPricePropHeuristicValue = self.buyStateResult(state, op, wantProp, wantProp.price/2)
         if halfPricePropHeuristicValue >= targetValue:
-            low = 0
+            low = wantProp.price/2
             high = self.money 
             while low + 1 < high:
                 mid = (low + high) // 2
@@ -713,7 +724,7 @@ class Board:
                 and prop.groupShare == 1 \
                 and prop.owner == player \
                 and prop.houses < 5 \
-                and prop.house_price <= player.money:
+                and prop.house_price <= player.money-player.strategy.cash_threshold:
                 
                 # make sure there is one house difference in any set
                 housesInSet = prop.houses
@@ -779,14 +790,16 @@ class Board:
         propCount = 0
         for prop in self.monopoly_board:
             if prop.type in ["property"]:
-                if prop.owner != "" and prop.owner.name != player.name and self.calculateRent(prop) > player.money:
+                if prop.owner != ""\
+                and prop.owner.name != player.name\
+                and self.calculateRent(prop) > player.money:
                     deadly += 1
                 propCount += 1
         
         return deadly / propCount
     
-    # this calculate total cost and total rent return
-    # it has been created for the whole set not individual properties
+    # this calculate total cost to improve and total rent return
+    # it calculate these values for the whole set not individual properties
     def propertiesEvaluation(self, player):
         tPropEvaluation = 0
         for prop in self.monopoly_board:
@@ -799,9 +812,40 @@ class Board:
                 if prop.groupShare == 1:
                     tPropEvaluation += round(propEvaluation/setSize*6,3)
                 else:
-                    tPropEvaluation += round((propEvaluation/setSize)*(prop.groupShare*3 if prop.group not in ["brown","dark blue"] else prop.groupShare*2),2)
+                    tPropEvaluation += round((propEvaluation/setSize)*(prop.groupShare*3\
+                                        if prop.group not in ["brown","dark blue"]\
+                                            else prop.groupShare*2),2)
             tPropEvaluation += propEvaluation
         return tPropEvaluation
+    
+    def landingOnLikelihood(self, player):
+        likelihoodDict = {"Old Kent Road"        : 4.95,
+                          "Whitechapel Road"     : 3.57,
+                          "The Angel Islington"  : 4.17,
+                          "Euston Road"          : 4.35,
+                          "Pentonville Road"     : 4.18,
+                          "Pall Mall"            : 5.69,
+                          "Whitehall"            : 4.29,
+                          "Northumberland Avenue": 4.2,
+                          "Bow Street"           : 4.94,
+                          "Marlborough Street"   : 5.15,
+                          "Vine Street"          : 5.56,
+                          "The Strand"           : 4.7,
+                          "Fleet Street"         : 4.41,
+                          "Trafalgar Square"     : 6.22,
+                          "Leicester Square"     : 4.46,
+                          "Coventry Street"      : 4.49,
+                          "Piccadilly"           : 4.26,
+                          "Regent Street"        : 4.25,
+                          "Oxford Street"        : 4.11,
+                          "Bond Street"          : 3.86,
+                          "Park Lane"            : 3.34,
+                          "Mayfair"              : 5.03}
+        totalLikelihood = 0
+        for prop in self.monopoly_board:
+            if prop.type == "property" and prop.owner != "" and prop.owner == player:
+                totalLikelihood += likelihoodDict[prop.name]
+        return totalLikelihood
     
     ## this make it easier to recall functions after any changes in the board
     def recalculateChanges(self):
@@ -892,44 +936,46 @@ class Game:
             self.state.round += 1      
 
 class Strategy:
-    def __init__(self, rr, opmv, oprr, ct, cp, dp, pe, buym, sellm):
-        self.rent_return = rr              # positive multiplier of total rent return
-        self.opponent_money_value = opmv   # negative multiplier of total opponents' money
-        self.opponent_rent_return = oprr   # negative multiplier of total opponents' rent return
-        self.cash_threshold = ct           # minimum cash the player should have
-        self.cash_penalty = cp             # negative applied if money lower than cash threshold
-        self.deadly_properties = dp        # negative value applied to the number of deadly spaces
-        self.properties_evaluation = pe    # positive multiplier for total properties evaluation
-        self.buy_margin = buym             # heuristic gain to buy property
-        self.sell_margin = sellm           # heuristic gain to sell property
+    def __init__(self, rr, opm, oprr, ct, cp, dp, pe, lp, bm, sm):
+        self.rent_return = rr            # positive multiplier of total rent return
+        self.op_money = opm              # negative multiplier of total opponents' money
+        self.op_rent_return = oprr       # negative multiplier of total opponents' rent return
+        self.cash_threshold = ct         # minimum cash the player should have
+        self.cash_penalty = cp           # negative applied if money lower than cash threshold
+        self.deadly_properties = dp      # negative value applied to the number of deadly spaces
+        self.property_evaluation = pe    # positive multiplier for total properties evaluation
+        self.landing_property = lp       # positive multiplier for total likelihood of landing on player's properties
+        self.buy_margin = bm           # heuristic gain to buy property
+        self.sell_margin = sm         # heuristic gain to sell property
           
     def heuristic(self, player, state):
         value =  player.money
         value += state.board.totalRent(player) * self.rent_return
 
-        value -= sum( [opponent.money for opponent in player.opponents] ) * self.opponent_money_value
-        value -= sum( [state.board.totalRent(opponent) for opponent in player.opponents] ) * self.opponent_rent_return
+        value -= sum( [opponent.money for opponent in player.opponents] ) * self.op_money
+        value -= sum( [state.board.totalRent(opponent) for opponent in player.opponents] ) * self.op_rent_return
 
         if (player.money < self.cash_threshold):
             value -= self.cash_penalty * (1-(player.money/self.cash_threshold))
 
         value -= state.board.dangerousProperties(player) * self.deadly_properties
-        value += state.board.propertiesEvaluation(player) * self.properties_evaluation
+        value += state.board.propertiesEvaluation(player) * self.property_evaluation
+        value += state.board.landingOnLikelihood(player) * self.landing_property
 
         return value
 
 
 
-def testSeries(players, max_rounds, game_num, output):
+def testSeries(players, max_rounds, game_num, output, data=[]):
     global GAME_OUTPUT
     wins = {}
     for player in players:
         wins[player.name] = 0
     game_played, progress = 0, 1
-    print("test started\nprogress:")
+    # print("test started\nprogress:")
     while game_played < game_num:
         GAME_OUTPUT = output
-        game_output(f'\n\nGame {game_played+1}:')
+        # game_output(f'\n\nGame {game_played+1}:')
         random.shuffle(players)
         game = Game( players, max_rounds )
         winner = game.play()
@@ -940,14 +986,32 @@ def testSeries(players, max_rounds, game_num, output):
                 per = game_played/game_num*100
                 print(f'{int(per)}%', end='\r')
                 progress += 1
+
+        # GAME_OUTPUT = True
+        # game.state.output_state()
+        # GAME_OUTPUT = output
     
     print('\n')
-    print("PLAYER   | WINS | PERCENT  ")
+    print("PLAYER   | WINS | PERCENT       rr  | opmv | oprr |  ct   |  cp   |  dp   | pe   |  lp  | bm   | sm   ")
+    data.append(["game:", game_played, "------", "------"])
+    data.append(["PLAYER","WINS","PERCENT", "rr", "opmv", "oprr","ct", "cp ", "dp", "pe", "lp", "bm", "sm"])
     for player in players:
         games_won = wins[player.name]
         percentage = round((games_won/game_num)*100,2)
-        strategy = player.strategy
-        print(f'{player.name:<8} | {games_won:^4} | {percentage:^5}%')
+        s = player.strategy
+        print(f'{player.name:<8} | {games_won:^4} | {percentage:^5}%        '\
+              f'{s.rent_return:^3} | {s.op_money:^4} | {s.op_rent_return:^4} | '\
+              f'{s.cash_threshold:^5} | {s.cash_penalty:^5} | {s.deadly_properties:^5} | '\
+              f'{s.property_evaluation:^4} | {s.landing_property:^4} | {s.buy_margin:^4} | {s.sell_margin:^4} ')
+        data.append([player.name, games_won, percentage,
+              s.rent_return, s.op_money, s.op_rent_return,
+              s.cash_threshold, s.cash_penalty, s.deadly_properties,
+              s.property_evaluation, s.landing_property, s.buy_margin, s.sell_margin])
+    with open("output.csv", "w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerows(data)
+
+    return wins
 
 global GAME_OUTPUT
 GAME_OUTPUT = True
@@ -956,62 +1020,105 @@ def game_output(*args, end="\n"):
        print(*args, end=end)
 
 
+## testSeries
+s1 = Strategy(15, 0, 0, 0, 0, 9000, 0, 0, 50, 250)
+s2 = Strategy(15, 0, 0, 0, 0, 9000, 9, 0, 50, 250)
+s3 = Strategy(15, 0, 0, 0, 0, 9000, 0, 10, 50, 250)
+s4 = Strategy(15, 0, 0, 0, 0, 9000, 9, 10, 50, 250) # the most optimal
 
-# self.rent_return = rr              # positive multiplier of total rent return
-# self.opponent_money_value = opmv   # negative multiplier of total opponents' money
-# self.opponent_rent_return = oprr   # negative multiplier of total opponents' rent return
-# self.cash_threshold = ct           # minimum cash the player should have
-# self.cash_penalty = cp             # negative applied if money lower than cash threshold
-# self.deadly_properties = dp        # negative value applied to the number of deadly spaces
-# self.buy_margin = buym
-# self.sell_margin = sellm
+a = Player("Player1", s1)
+b = Player("Player2", s2)
+c = Player("Player3", s3)
+d = Player("Test", s4)
+players = [a, b, c, d]
 
-s1 = Strategy(10, 1, 1, 100, 500, 1000, 0, 150, 150) #investor
-s2 = Strategy(5, 0, 0.7, 500, 1000, 5000, 0, 100, 200) # greedy
-s3 = Strategy(10, 0, 0.7, 500, 100, 1000, 0, 100, 200)
-s4 = Strategy(5, 1, 1, 100, 500, 5000, 0, 150, 150)
+start = time.time()
+# testSeries(players, 200, 2000, output=False)
+end = time.time()
+print(round((end-start)/60,2))
 
-a = Player("s1", s1)
-b = Player("s2", s2)
-c = Player("s3", s3)
-d = Player("s4", s4)
+################## hill_climbing
+s1 = Strategy(13, 0.2, 00.8, 44, 915, 4563, 0, 0, 168, 284)
+s2 = Strategy(14, 0.2, 1, 29, 605, 6123, 0, 0, 158, 187)
+s3 = Strategy(12, 0, 0.3, 16, 395, 1292, 0, 0, 242, 231)
+s4 = Strategy(15, 0, 0, 0, 0, 9000, 0, 0, 50, 250)
+
+a = Player("Player1", s1)
+b = Player("Player2", s2)
+c = Player("Player3", s3)
+d = Player("Test", s4)
 
 players = [a, b, c, d]
+
+def evaluate_strategy(players, max_rounds, game_num):
+    testSeries(players, max_rounds, game_num, False)
+    for player in players:
+        if getattr(player, "name") == "Test":
+            return player
+
+def generate_new_strategy(changing_val):
+    return Strategy(15, 0, 0, 0, 0, 9000, changing_val, 0, 50, 250)
+
+def random_strategies(players, max_rounds, game_num):
+    newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+    changing_val = 0
+    while changing_val < 10:
+        changing_val += 1
+        new_strategy = generate_new_strategy(changing_val)
+        setattr(newLowestPlayer, "strategy", new_strategy)
+        newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+
 start = time.time()
-testSeries(players, 200, 10, output=False)
+# random_strategies(players, 150, 2000)
 end = time.time()
 print(round((end-start)/60,2))
 
 
-# game = Board()
-# z = True
-# for x in game.monopoly_board:
-#     if x.type == "property":
-#         # if z:
-#         x.owner = a
-#         #     z = False
-#         # else:
-#         #     z = True
-# game.isSets()
-# playerCashScore = a.money * 0.01
-# tPropEvaluation = 0
-# for prop in game.monopoly_board:
-#     propEvaluation = 0
-#     if prop.type == "property" and prop.owner != "" and prop.owner == a:
-#         for n in prop.neighbors:
-#             propEvaluation += n.rent_price[5] / (n.house_price*5)
-#         setSize = len(prop.neighbors)+1
-#         propEvaluation += prop.rent_price[5] / (prop.house_price*5)
-#         # if prop.groupShare == 1:
-#         #     tPropEvaluation = round(propEvaluation/setSize*6,3)
-#         #     print(f'{prop.name:21} value {tPropEvaluation}')
-#         # else:
-#         # tPropEvaluation = round((propEvaluation/setSize)*(prop.groupShare*3 if prop.group not in ["brown","dark blue"] else prop.groupShare*2),2)
-#         one =  round((propEvaluation/setSize)*(1 if prop.group not in ["brown","dark blue"] else 1),2)
-#         two =  round((propEvaluation/setSize)*(2 if prop.group not in ["brown","dark blue"] else 6),2)
-#         three =  round((propEvaluation/setSize)*(6 if prop.group not in ["brown","dark blue"] else 0),2)
-#         print(f'{prop.name:21}| {one:5} | {two:5} | {three:5}')
+################## random generated strategies
+s1 = Strategy(13, 0.2, 00.8, 44, 915, 4563, 0, 0, 168, 284)
+s2 = Strategy(14, 0.2, 1, 29, 605, 6123, 0, 0, 158, 187)
+s3 = Strategy(12, 0, 0.3, 16, 395, 1292, 0, 0, 242, 231)
+s4 = Strategy(15, 0, 0, 0, 0, 9000, 0, 0, 50, 250)
 
-#     tPropEvaluation += propEvaluation
+a = Player("Player1", s1)
+b = Player("Player2", s2)
+c = Player("Player3", s3)
+d = Player("Test", s4)
 
-# print(tPropEvaluation)
+players = [a, b, c, d]
+
+def evaluate_strategy(players, max_rounds, game_num):
+    wins = testSeries(players, max_rounds, game_num, False)
+    # highest = max(wins, key=lambda key: wins[key])
+    lowest = min(wins, key=lambda key: wins[key])
+    lowestPlayer = None
+    for person in players:
+        if getattr(person, "name") == lowest:
+            lowestPlayer = person
+            break
+    return lowestPlayer
+
+def generate_new_strategy():
+    rr = random.randint(5,15)
+    opm = round(random.uniform(0,1),1)
+    oprr = round(random.uniform(0,1),1)
+    ct = random.randint(0,500)
+    cp = random.randint(0,1000)
+    dp = random.randint(0,10000)
+    pe = random.randint(0,0)
+    pl = random.randint(0,0)
+    bm = random.randint(0,300)
+    sm = random.randint(0,300)
+    return Strategy(rr, opm, oprr, ct, cp, dp, pe, pl, bm, sm)
+
+def hill_climbing(players, max_rounds, game_num, iterations):
+    newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+    for _ in range(iterations):
+        new_strategy = generate_new_strategy()
+        setattr(newLowestPlayer, "strategy", new_strategy)
+        newLowestPlayer = evaluate_strategy(players, max_rounds, game_num)
+
+start = time.time()
+# hill_climbing(players, 150, 250, 100)
+end = time.time()
+print(round((end-start)/60,2))
